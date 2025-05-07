@@ -1,10 +1,6 @@
 import "reflect-metadata";
 import 'dotenv/config';
-import express, {
-  Request,
-  Response,
-  NextFunction,
-} from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import { InversifyExpressServer } from 'inversify-express-utils';
 import errorHandlerMiddleware from './middlewares/error-handler.middleware';
@@ -18,7 +14,13 @@ server
   .setConfig((app) => {
     app.use(express.json());
     app.use(express.urlencoded({ extended: true }));
-    app.use(cors());
+    app.use(cors({
+      origin: [
+        "https://poker-admin-1.onrender.com",
+        "http://localhost:3000" // For local development
+      ],
+      credentials: true
+    }));
     app.disable('etag');
     app.use((req: Request, res: Response, next: NextFunction) => {
       // @ts-expect-error Fix later
@@ -31,14 +33,19 @@ server
   });
 
 const app = server.build();
-const port = process.env.PORT;
+const port = process.env.PORT || 3001; // Default port fallback
 
 const httpServer = http.createServer(app);
 const io = new SocketIOServer(httpServer, {
   cors: {
-    origin: '*',
-    methods: ['GET', 'POST']
-  }
+    origin: [
+      "https://poker-admin-1.onrender.com",
+      "http://localhost:3000"
+    ],
+    methods: ['GET', 'POST'],
+    credentials: true
+  },
+  transports: ['websocket', 'polling'] // Explicit transports for Render
 });
 
 setupSocketIO(io);
@@ -47,4 +54,3 @@ setupSocketIO(io);
 httpServer.listen(port, () => {
   console.log(`App is running on port ${port}`);
 });
-
