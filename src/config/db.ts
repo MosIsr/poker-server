@@ -1,22 +1,18 @@
-// db.ts-ի ձեր կոդը
 import { Pool } from 'pg';
-require('dotenv').config(); // Սա տեղական միջավայրի համար է
+import dotenv from "dotenv";
+dotenv.config();
 
-const isSSL = process.env.DATABASE_URL?.includes('heroku') || process.env.DATABASE_URL?.includes('amazonaws');
-
-const poolConfig: any = {
+const poolConfig = {
   user: process.env.DB_USER,
   host: process.env.DB_HOST,
   database: process.env.DB_NAME,
   password: process.env.DB_PASSWORD,
   port: parseInt(process.env.DB_PORT || '5432'),
+  ssl: {
+    rejectUnauthorized: false,
+  },
 };
 
-if (isSSL) {
-  poolConfig.ssl = {
-    rejectUnauthorized: false, // Արտադրական միջավայրում ավելի լավ է օգտագործել Heroku-ի SSL վկայականը
-  };
-}
 
 const pool = new Pool(poolConfig);
 export default pool;

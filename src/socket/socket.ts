@@ -22,6 +22,8 @@ export function setupSocketIO(io: Server) {
 
     socket.on('start-game', async ({ blindTime, smallBlind }: { blindTime:number, smallBlind: number }) => {
       try {
+        console.log('blindTime, smallBlind', blindTime, smallBlind);
+        
         const response = await gameService.startGame(blindTime, smallBlind);
         socket.emit("game-data", response);
       } catch (error) {
