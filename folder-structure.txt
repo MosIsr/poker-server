@@ -1,0 +1,95 @@
+.
+├── config.js
+├── dist
+│   ├── config
+│   │   └── db.js
+│   ├── controllers
+│   │   └── user.controller.js
+│   ├── di
+│   │   ├── inversify.config.js
+│   │   └── types.js
+│   ├── enums
+│   │   ├── player-action.enum.js
+│   │   └── round.enum.js
+│   ├── errors
+│   │   ├── domain.error.js
+│   │   └── validations.error.js
+│   ├── index.js
+│   ├── middlewares
+│   │   └── error-handler.middleware.js
+│   ├── models
+│   │   ├── action.js
+│   │   ├── game.js
+│   │   ├── hand.js
+│   │   └── player.js
+│   ├── repositories
+│   │   ├── base-repository.js
+│   │   ├── interfaces
+│   │   │   ├── IBaseRepository.js
+│   │   │   └── IRepository.js
+│   │   └── repository.js
+│   ├── requests
+│   │   └── global.request.js
+│   ├── services
+│   │   ├── game.service.js
+│   │   └── interfaces
+│   │       └── IGameService.js
+│   ├── socket
+│   │   └── socket.js
+│   └── utils
+│       ├── get-players.js
+│       ├── mapping-round.js
+│       └── random-generator.js
+├── folder-structure.txt
+├── migration-config.js
+├── migrations
+│   ├── 1744805030520_create-games-table.js
+│   ├── 1744806060686_create-players-table.js
+│   ├── 1744807736167_create-hands-table.js
+│   └── 1745666104710_create-actions-table.js
+├── nodemon.json
+├── package.json
+├── package-lock.json
+├── src
+│   ├── config
+│   │   └── db.ts
+│   ├── controllers
+│   │   └── user.controller.ts
+│   ├── di
+│   │   ├── inversify.config.ts
+│   │   └── types.ts
+│   ├── enums
+│   │   ├── player-action.enum.ts
+│   │   └── round.enum.ts
+│   ├── errors
+│   │   ├── domain.error.ts
+│   │   └── validations.error.ts
+│   ├── index.ts
+│   ├── middlewares
+│   │   └── error-handler.middleware.ts
+│   ├── models
+│   │   ├── action.ts
+│   │   ├── game.ts
+│   │   ├── hand.ts
+│   │   └── player.ts
+│   ├── repositories
+│   │   ├── base-repository.ts
+│   │   ├── interfaces
+│   │   │   ├── IBaseRepository.ts
+│   │   │   └── IRepository.ts
+│   │   └── repository.ts
+│   ├── requests
+│   │   └── global.request.ts
+│   ├── services
+│   │   ├── game.service.ts
+│   │   └── interfaces
+│   │       └── IGameService.ts
+│   ├── socket
+│   │   └── socket.ts
+│   └── utils
+│       ├── get-players.ts
+│       ├── mapping-round.ts
+│       └── random-generator.ts
+└── tsconfig.json
+
+31 directories, 61 files

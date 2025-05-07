@@ -44,8 +44,13 @@ const io = new SocketIOServer(httpServer, {
     ],
     methods: ['GET', 'POST'],
     credentials: true
+    
   },
-  transports: ['websocket', 'polling'] // Explicit transports for Render
+  transports: ['websocket', 'polling'],
+  allowUpgrades: true,
+  perMessageDeflate: false,
+  pingTimeout: 60000,
+  pingInterval: 25000
 });
 
 setupSocketIO(io);
