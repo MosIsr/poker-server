@@ -15,5 +15,19 @@ export default interface IGameService {
   getPlayersInGame(gameId: UUID): Promise<Player[]>;
 
   getHandById(handId: UUID): Promise<Hand | null>;
+
+  getGameLastHandByGameId(gameId: UUID): Promise<Hand | null>;
+
+  handleNextHand(
+    gameId: UUID,
+    handId: UUID,
+    winners: Array<{id: UUID, amount: number}>,
+  ): Promise<{
+    players: Player[];
+    hand: Hand;
+    level: number;
+    blindTime: number
+  }>;
+
 }
 

@@ -71,6 +71,21 @@ export default class GameService implements IGameService {
         false,
         players[3].id,
       );
+
+      await this.performAction(
+        game.id,
+        hand.id,
+        players[1].id,
+        PlayerAction.Bet,
+        smallBlindAmount,
+      );
+      await this.performAction(
+        game.id,
+        hand.id,
+        players[2].id,
+        PlayerAction.Bet,
+        bigBlindAmount,
+      );
           
       return {
         players,
@@ -159,7 +174,7 @@ export default class GameService implements IGameService {
       );
       await this.nextPlayer(gameId, handId, playerId, actionType);
       console.log('************** END RAISE **************');
-    } else if (actionType === 'Bet' && betAmount !== undefined) {
+    } else if (actionType === PlayerAction.Bet && betAmount !== undefined) {
       console.log('************** START BET **************');
       await this.repository.updateHandCurrentMaxBet(handId, betAmount);
       await this.repository.updateHandLastRaiseAmount(handId, betAmount);
@@ -177,22 +192,27 @@ export default class GameService implements IGameService {
       await this.nextPlayer(gameId, handId, playerId, actionType);
 
       console.log('************** END BET **************');
-    } else if (actionType === PlayerAction.Call && betAmount !== undefined) {
+    } else if (actionType === PlayerAction.Call) {
       console.log('************** START CALL **************');
       const playerTotalBetInCurrentRound = await this.repository.getActionsBetAmountsByHandIdAndPlayerIdAndRound(handId, playerId, hand.current_round);
       
       if (playerTotalBetInCurrentRound !== 0) {
         currentBetAmount = +hand.current_max_bet - +playerTotalBetInCurrentRound
       }
-      await this.repository.updateHandPot(handId, +hand.pot_amount + currentBetAmount);
       const player = await this.repository.getPlayerById(playerId);
+      let action = PlayerAction.Call;
       if (player) {
+        if (currentBetAmount > player.amount) {
+          currentBetAmount = +player.amount;
+          action = PlayerAction.AllIn;
+        }
+        await this.repository.updateHandPot(handId, +hand.pot_amount + currentBetAmount);
         await this.repository.updatePlayer(
           playerId,
           { 
             amount: player?.amount - currentBetAmount,
-            action: PlayerAction.Call,
-            action_amount: + currentBetAmount,
+            action: action,
+            action_amount: +currentBetAmount,
           }
         );
       }
@@ -202,10 +222,10 @@ export default class GameService implements IGameService {
         currentRound,
         currentBettingRound,
         actionOrder,
-        actionType,
+        action,
         currentBetAmount,
       );
-      await this.nextPlayer(gameId, handId, playerId, actionType);
+      await this.nextPlayer(gameId, handId, playerId, action);
       
       console.log('************** END CALL **************');
     } else if (actionType === PlayerAction.Fold) {
@@ -241,6 +261,33 @@ export default class GameService implements IGameService {
       await this.nextPlayer(gameId, handId, playerId, actionType);
       // Այստեղ կարող եք ավելացնել ստուգումներ, թե արդյոք խաղացողը իրավունք ունի check անել
       console.log('************** END CHECK **************');
+    } else if (actionType === PlayerAction.AllIn) {
+      console.log('************** START ALL IN **************');
+      const player = await this.repository.getPlayerById(playerId);
+      if (player) {
+        currentBetAmount = +player.amount;
+        await this.repository.updateHandPot(handId, +hand.pot_amount + currentBetAmount);
+        await this.repository.updatePlayer(
+          playerId,
+          { 
+            amount: 0,
+            action: PlayerAction.AllIn,
+            action_amount: + currentBetAmount,
+          }
+        );
+      }
+      await this.repository.createAction(
+        handId,
+        playerId,
+        currentRound,
+        currentBettingRound,
+        actionOrder,
+        PlayerAction.AllIn,
+        currentBetAmount,
+      );
+      await this.nextPlayer(gameId, handId, playerId, PlayerAction.AllIn);
+      
+      console.log('************** END ALL IN **************');
     }
 
     
@@ -266,6 +313,10 @@ export default class GameService implements IGameService {
     return await this.repository.getHandById(handId);
   }
 
+  async getGameLastHandByGameId(gameId: UUID): Promise<Hand | null> {
+    return await this.repository.getGameLastHandByGameId(gameId);
+  }
+
 
   async nextPlayer(
     gameId: UUID,
@@ -282,218 +333,231 @@ export default class GameService implements IGameService {
       const activePlayers = await this.repository.getPlayers(gameId);
       const foldingPlayerIndex = activePlayers.findIndex(p => p.id === playerId);
       const activeNotFoldedPlayers = activePlayers.filter(p => p.is_active && p.action !== PlayerAction.Fold);
-      const playerTotalBetInCurrentRound = await this.repository.getActionsBetAmountsByHandIdAndPlayerIdAndRound(handId, playerId, hand.current_round);
-      const playersCurrentRoundActions = await Promise.all(
-        activeNotFoldedPlayers.map(player => {
-          return this.repository.getActionsByHandIdAndPlayerIdAndRound(handId, player.id, hand.current_round);
-        })
-      );
-      const allPlayersActedCurrentRound = playersCurrentRoundActions.every(action => action.length > 0);
-      const allPlayersActed = activeNotFoldedPlayers.every(player => player.action !== null && player.action !== '');
-      
-      const playersBetAmounts = await Promise.all(
-        activeNotFoldedPlayers.map(player => {
-          return this.repository.getActionsBetAmountsByHandIdAndPlayerIdAndRound(handId, player.id, hand.current_round);
-        })
-      );
-      const allActionAmountsEqual = playersBetAmounts.every((element) => element === playersBetAmounts[0]);
-      const allPlayerActionEqual = activeNotFoldedPlayers.every((element) => element.action === activeNotFoldedPlayers[0].action);
-
-      let nextActivePlayer = null;
-
-      console.log('---------------------------------');
-      console.log('');
-      console.log('allPlayerActionEqual', allPlayerActionEqual);
-      console.log('allActionAmountsEqual', allActionAmountsEqual);
-      console.log('allPlayersActed', allPlayersActed);
-      console.log('allPlayersActedCurrentRound', allPlayersActedCurrentRound);
-      console.log('!hand.is_changed_current_round', !hand.is_changed_current_round);
-      console.log('');
-      console.log('---------------------------------');
-      
-      
-      if ((allPlayerActionEqual || allActionAmountsEqual) && allPlayersActed && allPlayersActedCurrentRound && !hand.is_changed_current_round) {
-  
-        console.log('All active players have equal action_amount!');
+      console.log('************activeNotFoldedPlayers********************', activeNotFoldedPlayers);
+      if (activeNotFoldedPlayers.length < 2) {
+        // await this.createNewHand(gameId, handId);
+        await this.repository.updateHand(handId, { current_round: Round.Showdown });
+      } else {
+        const playerTotalBetInCurrentRound = await this.repository.getActionsBetAmountsByHandIdAndPlayerIdAndRound(handId, playerId, hand.current_round);
+        const playersCurrentRoundActions = await Promise.all(
+          activeNotFoldedPlayers.map(player => {
+            return this.repository.getActionsByHandIdAndPlayerIdAndRound(handId, player.id, hand.current_round);
+          })
+        );
+        const allPlayersActedCurrentRound = playersCurrentRoundActions.every(action => action.length > 0);
+        const allPlayersActed = activeNotFoldedPlayers.every(player => player.action !== null && player.action !== '');
         
-        const currentRound = hand.current_round;
-        const nextRoundMap = {
-          [Round.Preflop]: Round.Flop,
-          [Round.Flop]: Round.Turn,
-          [Round.Turn]: Round.River,
-          [Round.River]: Round.Showdown,
-          [Round.Showdown]: Round.Showdown,
-        };
+        const playersBetAmounts = await Promise.all(
+          activeNotFoldedPlayers.map(player => {
+            return this.repository.getActionsBetAmountsByHandIdAndPlayerIdAndRound(handId, player.id, hand.current_round);
+          })
+        );
+        console.log('playersBetAmounts', playersBetAmounts);
+        console.log('activeNotFoldedPlayers', activeNotFoldedPlayers);
+        
+        const allActionAmountsEqual = playersBetAmounts.every((element) => element === playersBetAmounts[0]);
+        const allPlayerActionEqual = activeNotFoldedPlayers.every((element) => element.action === activeNotFoldedPlayers[0].action && ![PlayerAction.Raise, PlayerAction.AllIn].includes(element.action));
+  
+        let nextActivePlayer = null;
+        
+        if ((allPlayerActionEqual || allActionAmountsEqual) && allPlayersActed && allPlayersActedCurrentRound && !hand.is_changed_current_round) {
     
-        const nextRound = nextRoundMap[currentRound];
-        console.log('nextRound', nextRound);
-        
-        if (nextRound && nextRound !== currentRound) {
-          await this.repository.updateHand(handId, { current_round: nextRound, is_changed_current_round: true });
-          console.log(`Moved to next round: ${nextRound}`);
-        } else {
-          console.log('Already at the last round: Showdown');
-        }
+          console.log('All active players have equal action_amount!');
+          
+          const currentRound = hand.current_round;
+          const nextRoundMap = {
+            [Round.Preflop]: Round.Flop,
+            [Round.Flop]: Round.Turn,
+            [Round.Turn]: Round.River,
+            [Round.River]: Round.Showdown,
+            [Round.Showdown]: Round.Showdown,
+          };
       
+          const nextRound = nextRoundMap[currentRound];
+          console.log('nextRound', nextRound);
+          
+          if (nextRound && nextRound !== currentRound) {
+            await this.repository.updateHand(handId, { current_round: nextRound, is_changed_current_round: true });
+            console.log(`Moved to next round: ${nextRound}`);
+          } else {
+            console.log('Already at the last round: Showdown');
+          }
         
-        const activePlayers = await this.repository.getPlayers(gameId);
-  
-        const bigBlindPlayerIndex = activePlayers.findIndex(p => p.id === hand.dealer);
-  
-        if (bigBlindPlayerIndex === -1) {
-          console.error('Big blind player not found!');
-          return;
-        }
-  
-        let nextIndex = (bigBlindPlayerIndex + 1) % activePlayers.length;
-        let attempts = 0;
-        while (attempts < activePlayers.length) {
-          const player = activePlayers[nextIndex];
+          
+          const activePlayers = await this.repository.getPlayers(gameId);
     
-          if (player.is_active && player.action !== PlayerAction.Fold) {
-            nextActivePlayer = player;
-            break;
+          const bigBlindPlayerIndex = activePlayers.findIndex(p => p.id === hand.dealer);
+    
+          if (bigBlindPlayerIndex === -1) {
+            console.error('Big blind player not found!');
+            return;
           }
     
-          nextIndex = (nextIndex + 1) % activePlayers.length;
-          attempts++;
-        }
-      } else {
-  
-        let nextIndex = (foldingPlayerIndex + 1) % activePlayers.length;
-        let attempts = 0;
-        while (!nextActivePlayer && attempts < activePlayers.length) {
-          const player = activePlayers[nextIndex];
-          if (player.is_active && player.action !== PlayerAction.Fold) {
-            nextActivePlayer = player;
-          } else {
+          let nextIndex = (bigBlindPlayerIndex + 1) % activePlayers.length;
+          let attempts = 0;
+          while (attempts < activePlayers.length) {
+            const player = activePlayers[nextIndex];
+      
+            if (player.is_active && player.action !== PlayerAction.Fold) {
+              nextActivePlayer = player;
+              break;
+            }
+      
             nextIndex = (nextIndex + 1) % activePlayers.length;
             attempts++;
           }
+        } else {
+    
+          let nextIndex = (foldingPlayerIndex + 1) % activePlayers.length;
+          let attempts = 0;
+          while (!nextActivePlayer && attempts < activePlayers.length) {
+            const player = activePlayers[nextIndex];
+            if (player.is_active && player.action !== PlayerAction.Fold) {
+              nextActivePlayer = player;
+            } else {
+              nextIndex = (nextIndex + 1) % activePlayers.length;
+              attempts++;
+            }
+          }
+        }    
+        if (nextActivePlayer) {
+          await this.repository.updateHand(handId, { current_player_turn_id: nextActivePlayer.id, is_changed_current_round: false });
+        } else {
+          console.log('Ձեռքն ավարտվեց, մնաց միայն մեկ ակտիվ խաղացող');
         }
-      }    
-      if (nextActivePlayer) {
-        await this.repository.updateHand(handId, { current_player_turn_id: nextActivePlayer.id, is_changed_current_round: false });
-      } else {
-        console.log('Ձեռքն ավարտվեց, մնաց միայն մեկ ակտիվ խաղացող');
       }
     }
   }
 
 
-  async nextPlayer3(
+  async handleNextHand(
     gameId: UUID,
     handId: UUID,
-    playerId: UUID,
-    actionType: string,
-  ): Promise<void> {
-    console.log('************** HANDLE NEXT PLAYER **************');
-    const hand = await this.repository.getHandById(handId);
-
-    if (hand) {
-      const activePlayers = await this.repository.getActiveNotFoldPlayers(gameId);
-      const activeNotFoldedPlayers = activePlayers.filter(p => p.is_active && p.action !== PlayerAction.Fold);
-
-      // Ստուգում ենք՝ արդյոք բոլոր ակտիվ խաղացողները գործել են իրենց հերթին և արել են հավասար խաղադրույքներ
-      const allBettingFinished = activeNotFoldedPlayers.every(player => {
-        // Առաջին խաղացողը փուլում միշտ պետք է բեթ կամ ռեյզ անի
-        if (activeNotFoldedPlayers.indexOf(player) === 0 && hand.current_max_bet === 0) {
-          return false;
-        }
-        return +player.action_amount >= +hand.current_max_bet || player.id === hand.current_player_turn_id;
-      });
-
-      const allChecked = activeNotFoldedPlayers.every(player => player.action === PlayerAction.Check);
-
-      // Եթե բոլորը հավասարաչափ են բեթ արել կամ բոլորը չեք են արել (եթե current_max_bet-ը 0 է), անցնում ենք հաջորդ փուլ
-      if ((allBettingFinished && hand.current_max_bet > 0) || (allChecked && hand.current_max_bet === 0 && hand.current_round !== Round.Preflop)) {
-        console.log('Բոլորը գործել են, անցնում ենք հաջորդ փուլ');
-        const currentRound = hand.current_round;
-        const nextRoundMap = {
-          [Round.Preflop]: Round.Flop,
-          [Round.Flop]: Round.Turn,
-          [Round.Turn]: Round.River,
-          [Round.River]: Round.Showdown,
-          [Round.Showdown]: Round.Showdown,
-        };
-
-        const nextRound = nextRoundMap[currentRound];
-
-        if (nextRound && nextRound !== currentRound) {
-          await this.repository.updateHand(handId, { current_round: nextRound, current_max_bet: 0, last_raise_amount: 0, is_changed_current_round: true });
-          console.log(`Moved to next round: ${nextRound}`);
-
-          let nextPlayerForNewRound = null;
-          if (nextRound !== Round.Preflop) {
-            // Բոլոր հաջորդ փուլերում առաջինը գործում է դիլերից հետո նստած ակտիվ խաղացողը
-            const dealerPlayerIndex = activePlayers.findIndex(p => p.id === hand.dealer);
-            let nextPlayerIndex = (dealerPlayerIndex + 1) % activePlayers.length;
-            let attempts = 0;
-            while (!nextPlayerForNewRound && attempts < activePlayers.length) {
-              if (activePlayers[nextPlayerIndex].is_active && activePlayers[nextPlayerIndex].action !== PlayerAction.Fold) {
-                nextPlayerForNewRound = activePlayers[nextPlayerIndex];
-                break;
-              }
-              nextPlayerIndex = (nextPlayerIndex + 1) % activePlayers.length;
-              attempts++;
-            }
-          } else {
-            // Պրեֆլոպում առաջինը գործում է մեծ բլայնդից հետո նստած խաղացողը (UTG)
-            const bigBlindPlayerIndex = activePlayers.findIndex(p => p.id === hand.big_blind);
-            let nextPlayerIndex = (bigBlindPlayerIndex + 1) % activePlayers.length;
-            let attempts = 0;
-            while (!nextPlayerForNewRound && attempts < activePlayers.length) {
-              if (activePlayers[nextPlayerIndex].is_active && activePlayers[nextPlayerIndex].action !== PlayerAction.Fold) {
-                nextPlayerForNewRound = activePlayers[nextPlayerIndex];
-                break;
-              }
-              nextPlayerIndex = (nextPlayerIndex + 1) % activePlayers.length;
-              attempts++;
-            }
-          }
-
-          if (nextPlayerForNewRound) {
-            await this.repository.updateHand(handId, { current_player_turn_id: nextPlayerForNewRound.id });
-          }
-        } else {
-          console.log('Already at the last round: Showdown');
-          // Showdown logic here
-        }
-        return; // Եթե անցել ենք հաջորդ փուլ, դուրս ենք գալիս ֆունկցիայից
+    winners: Array<{id: UUID, amount: number}>,
+  ): Promise<{
+    players: Player[];
+    hand: Hand;
+    level: number;
+    blindTime: number
+  }> {
+    for (const winner of winners) {
+      await this.repository.incrementPlayerAmount(winner.id, winner.amount)
+    }
+    const hand = await this.createNewHand(gameId, handId);
+    if(!hand) {
+      throw new Error('Not find hand.');
+    }
+    let players = await this.repository.getPlayers(gameId);
+    if(!players) {
+      throw new Error('Not find players.');
+    }
+    
+    for (const player of players) {
+      console.log('Player-------------------------', player.amount);
+      
+      if(+player.amount === 0) {
+        await this.repository.updatePlayer(player.id, { is_active: false});
       }
+    }
+    await this.repository.updatePlayersByGameId(gameId, { action: PlayerAction.Active,  action_amount: 0})
+    players = await this.repository.getPlayers(gameId);
+    if(!players) {
+      throw new Error('Not find players.');
+    }
+    const game = await this.repository.getGame(gameId);
+    if(!game) {
+      throw new Error('Not find game.');
+    }
 
-      // Եթե դեռ խաղադրույքների փուլում ենք, գտնում ենք հաջորդ ակտիվ խաղացողին
-      const currentPlayerIndex = activePlayers.findIndex(p => p.id === hand.current_player_turn_id);
-      let nextIndex = (currentPlayerIndex + 1) % activePlayers.length;
-      let attempts = 0;
-      let nextActivePlayer = null;
-
-      while (!nextActivePlayer && attempts < activePlayers.length) {
-        const player = activePlayers[nextIndex];
-        if (player.is_active && player.action !== PlayerAction.Fold && player.id !== hand.current_player_turn_id) {
-          nextActivePlayer = player;
-          break;
-        }
-        nextIndex = (nextIndex + 1) % activePlayers.length;
-        attempts++;
-      }
-
-      if (nextActivePlayer) {
-        await this.repository.updateHand(handId, { current_player_turn_id: nextActivePlayer.id, is_changed_current_round: false });
-      } else {
-        // Եթե այլ ակտիվ խաղացող չկա (ինչը տարօրինակ է այս պայմանում), հնարավոր է ձեռքի ավարտ
-        console.log('Ակտիվ խաղացող չի գտնվել');
-        // Հնարավոր է ձեռքի ավարտի տրամաբանություն
-      }
+    return {
+      players,
+      hand,
+      level: game.level,
+      blindTime: game.blind_time,
     }
   }
 
-  async createNewHand() {
-    
+  async createNewHand(
+    gameId: UUID,
+    lastHandId: UUID
+  ): Promise<Hand | null> {
+    console.log('=========== CREATE NEW HAND ============');
 
-    // return {
-    //   players,
-    //   hand,
-    // }
+    const lastHand = await this.repository.getHandById(lastHandId);
+    if(!lastHand) {
+      throw new Error('Not find hand.');
+    }
+    const players = await this.repository.getPlayers(gameId);
+    const activePlayers = players.filter(p => p.is_active);
+    if (activePlayers.length < 2) {
+      throw new Error('Not enough active players to start a hand.');
+    }
+
+    const currentDealerIndex = players.findIndex(p => p.id === lastHand.dealer);
+
+    let nextDealerId: UUID | undefined;;
+    for (let i = 1; i <= players.length; i++) {
+      const nextIndex = (currentDealerIndex + i) % players.length;
+      if (players[nextIndex].is_active) {
+        nextDealerId = players[nextIndex].id;
+        break;
+      }
+    }
+    if (!nextDealerId) throw new Error('Could not find next dealer.');
+    
+    let smallBlindId: UUID | undefined;
+    for (let i = 1; i <= players.length; i++) {
+      const index = (players.findIndex(p => p.id === nextDealerId) + i) % players.length;
+      if (players[index].is_active) {
+        smallBlindId = players[index].id;
+        break;
+      }
+    }
+    if (!smallBlindId) throw new Error('Could not find small blind.');
+
+    let bigBlindId: UUID | undefined;
+    for (let i = 1; i <= players.length; i++) {
+      const index = (players.findIndex(p => p.id === smallBlindId) + i) % players.length;
+      if (players[index].is_active) {
+        bigBlindId = players[index].id;
+        break;
+      }
+    }
+    if (!bigBlindId) throw new Error('Could not find big blind.');
+
+    let currentPlayerTurnId: UUID | undefined;
+    for (let i = 1; i <= players.length; i++) {
+      const index = (players.findIndex(p => p.id === bigBlindId) + i) % players.length;
+      if (players[index].is_active) {
+        currentPlayerTurnId = players[index].id;
+        break;
+      }
+    }
+    if (!currentPlayerTurnId) throw new Error('Could not find player to act.');
+
+    const smallBlindAmount = +lastHand.small_blind_amount;
+    const bigBlindAmount = +lastHand.big_blind_amount;
+    const potAmount = smallBlindAmount + bigBlindAmount;
+
+    const hand = await this.repository.createHand(
+      gameId,
+      +lastHand.level + 1,
+      nextDealerId,
+      smallBlindId,
+      bigBlindId,
+      potAmount,
+      smallBlindAmount,
+      bigBlindAmount,
+      bigBlindAmount,
+      bigBlindAmount,
+      bigBlindAmount,
+      Round.Preflop,
+      false,
+      currentPlayerTurnId
+    );
+
+    console.log('new hand', hand);
+ 
+    return hand;
   }
 }

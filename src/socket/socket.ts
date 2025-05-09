@@ -53,15 +53,25 @@ export function setupSocketIO(io: Server) {
           actionType,
           betAmount,
         );
-        // After a player action, we need to send updated game state to all connected clients
-        const updatedPlayers = await gameService.getPlayersInGame(gameId); // Assuming you have this method
-        const updatedHand = await gameService.getHandById(handId); // Assuming you have this method
-        io.emit('game-update', { players: updatedPlayers, hand: updatedHand }); // Broadcast to all clients
+        const updatedPlayers = await gameService.getPlayersInGame(gameId);
+        const updatedHand = await gameService.getGameLastHandByGameId(gameId);
+        socket.emit('game-update', { players: updatedPlayers, hand: updatedHand });
       } catch (error) {
         console.error('Error performing action:', error);
         socket.emit('action-error', { message: error instanceof DomainError ? error.message : 'Failed to perform action' });
       }
     });
+
+    socket.on('next-hand', async (data) => {
+
+      console.log('next-hand:', data);
+      const response = await gameService.handleNextHand(
+        data.gameId,
+        data.handId,
+        data.winners,
+      );
+      socket.emit('game-data', response);
+    })
 
   });
 }

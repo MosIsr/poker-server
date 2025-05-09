@@ -171,6 +171,27 @@ export default class Repository
     return result.rows;
   }
 
+  async updatePlayersByGameId(
+    gameId: UUID,
+    updateData: Partial<Player>,
+    client?: PoolClient | Pool
+  ): Promise<void> {
+    const queryClient = client ?? this.pool;
+  
+    const setClauses = Object.keys(updateData)
+      .map((key, index) => `${key} = $${index + 2}`)
+      .join(', ');
+  
+    if (!setClauses) return;
+  
+    const values = [gameId, ...Object.values(updateData)];
+  
+    await queryClient.query(
+      `UPDATE players SET ${setClauses} WHERE game_id = $1`,
+      values
+    );
+  }
+
   async updatePlayer(
     playerId: UUID,
     updateData: Partial<Player>,
@@ -192,6 +213,23 @@ export default class Repository
     );
     return result.rows.length ? result.rows[0] : null;
   }
+
+  async incrementPlayerAmount(
+    playerId: UUID,
+    amount: number,
+    client?: PoolClient | Pool
+  ): Promise<Player | null> {
+    const queryClient = client ?? this.pool;
+     
+    const result = await queryClient.query(
+      `UPDATE players SET amount = amount + $2 WHERE id = $1 RETURNING *`,
+      [playerId, amount]
+    );
+
+    return result.rows.length ? result.rows[0] : null;
+  }
+
+
 
 
   async createHand(
@@ -272,6 +310,19 @@ export default class Repository
     const result = await queryClient.query(
       'SELECT * FROM hands WHERE id = $1',
       [handId]
+    );
+    
+    return result.rows.length ? result.rows[0] : null;
+  }
+
+  async getGameLastHandByGameId(
+    gameId: UUID,
+    client?: PoolClient | Pool
+  ): Promise<Hand | null> {
+    const queryClient = client ?? this.pool;
+    const result = await queryClient.query(
+      'SELECT * FROM hands WHERE game_id = $1 ORDER BY created_at DESC LIMIT 1',
+      [gameId]
     );
     
     return result.rows.length ? result.rows[0] : null;

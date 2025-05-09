@@ -57,9 +57,21 @@ export interface IRepository {
     client?: PoolClient | Pool
   ): Promise<Player[]>;
 
+  updatePlayersByGameId(
+    gameId: UUID,
+    updateData: Partial<Player>,
+    client?: PoolClient | Pool
+  ): Promise<void>;
+
   updatePlayer(
     playerId: UUID,
     updateData: Partial<Player>,
+    client?: PoolClient | Pool
+  ): Promise<Player | null>;
+
+  incrementPlayerAmount(
+    playerId: UUID,
+    amount: number,
     client?: PoolClient | Pool
   ): Promise<Player | null>;
 
@@ -84,6 +96,11 @@ export interface IRepository {
   getHands(client?: PoolClient | Pool): Promise<Hand | null>;
 
   getHandById(handId: UUID, client?: PoolClient | Pool): Promise<Hand | null>;
+
+  getGameLastHandByGameId(
+    gameId: UUID,
+    client?: PoolClient | Pool
+  ): Promise<Hand | null>;
 
   getPlayerById(playerId: UUID, client?: PoolClient | Pool): Promise<Player | null>;
 
