@@ -20,11 +20,9 @@ export function setupSocketIO(io: Server) {
 
 
 
-    socket.on('start-game', async ({ blindTime, smallBlind }: { blindTime:number, smallBlind: number }) => {
+    socket.on('start-game', async ({ blindTime, playersChips }: { blindTime:number, playersChips: number }) => {
       try {
-        console.log('blindTime, smallBlind', blindTime, smallBlind);
-        
-        const response = await gameService.startGame(blindTime, smallBlind);
+        const response = await gameService.startGame(blindTime, playersChips);
         socket.emit("game-data", response);
       } catch (error) {
         console.error('Error starting game:', error);
@@ -33,7 +31,6 @@ export function setupSocketIO(io: Server) {
     });
 
     socket.on('player-action', async (data) => {
-      console.log('player-action:', data);
       const {
         gameId,
         handId,
@@ -55,7 +52,13 @@ export function setupSocketIO(io: Server) {
         );
         const updatedPlayers = await gameService.getPlayersInGame(gameId);
         const updatedHand = await gameService.getGameLastHandByGameId(gameId);
-        socket.emit('game-update', { players: updatedPlayers, hand: updatedHand });
+        const playerActions = await gameService.getPlayerActionsOpportunities(gameId, handId);
+        
+        socket.emit('game-update', { 
+          players: updatedPlayers, 
+          hand: updatedHand,
+          playerActions,
+        });
       } catch (error) {
         console.error('Error performing action:', error);
         socket.emit('action-error', { message: error instanceof DomainError ? error.message : 'Failed to perform action' });
@@ -63,8 +66,6 @@ export function setupSocketIO(io: Server) {
     });
 
     socket.on('next-hand', async (data) => {
-
-      console.log('next-hand:', data);
       const response = await gameService.handleNextHand(
         data.gameId,
         data.handId,

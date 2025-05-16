@@ -22,6 +22,11 @@ exports.up = async (pgm) => {
       notNull: false,
       default: 1,
     },
+    chips: {
+      type: 'numeric',
+      notNull: false,
+      default: 0,
+    },
     start_time: {
       type: 'TIMESTAMP',
       notNull: true,

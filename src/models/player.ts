@@ -11,5 +11,6 @@ export default interface Player {
   is_active: boolean;
   action: PlayerAction;
   action_amount: number;
+  all_bet_sum: number;
   created_at: DateTime;
 }

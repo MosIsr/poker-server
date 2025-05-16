@@ -9,48 +9,27 @@ exports.shorthands = undefined;
  * @returns {Promise<void> | void}
  */
 exports.up = (pgm) => {
-  pgm.createTable('players', {
-    id: { 
-      type: 'uuid', 
-      primaryKey: true
-    },
-    game_id: {
+  pgm.createTable('game_blinds', {
+    id: {
       type: 'uuid',
-      notNull: true,
-      references: 'games (id)',
-      onDelete: 'CASCADE',
+      primaryKey: true,
     },
-    name: {
-      type: 'text',
-      notNull: true,
-    },
-    amount: {
+    game_level: {
       type: 'numeric',
-      notNull: true, 
-      default: 0,
-    },
-    is_online: {
-      type: 'boolean',
-      notNull: true, 
-      default: false,
-    },
-    is_active: {
-      type: 'boolean',
-      notNull: true, 
-      default: true,
-    },
-    action: {
-      type: 'text',
       notNull: true,
-      default: '',
-      check: "action IN ('', 'bet', 'fold', 'call', 'check', 'raise', 're-raise', 'all-in')"
+      default: 1,
     },
-    action_amount: {
+    small_blind_amount: {
       type: 'numeric',
       notNull: true,
       default: 0,
     },
-    all_bet_sum: {
+    big_blind_amount: {
+      type: 'numeric',
+      notNull: true,
+      default: 0,
+    },
+    ante: {
       type: 'numeric',
       notNull: true,
       default: 0,
@@ -59,7 +38,7 @@ exports.up = (pgm) => {
       type: 'timestamp',
       notNull: true,
       default: pgm.func('current_timestamp'),
-    },
+    }
   });
 };
 
@@ -69,5 +48,5 @@ exports.up = (pgm) => {
  * @returns {Promise<void> | void}
  */
 exports.down = (pgm) => {
-  pgm.dropTable('players');
+  pgm.dropTable('game_blinds');
 };

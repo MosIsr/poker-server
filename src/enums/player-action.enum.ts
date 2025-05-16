@@ -5,5 +5,6 @@ export enum PlayerAction {
   Call = 'call',
   Check = 'check',
   Raise = 'raise',
+  ReRaise = 're-raise',
   AllIn = 'all-in',
 }

@@ -6,6 +6,8 @@ import Action from 'src/models/action';
 import Game from 'src/models/game';
 import { DateTime } from 'luxon';
 import { Round } from 'src/enums/round.enum';
+import GameBlind from 'src/models/game-blinds';
+import { PlayerAction } from 'src/enums/player-action.enum';
 
 export interface IRepository {
   createClientAndBeginTransaction(): Promise<PoolClient>;
@@ -16,6 +18,7 @@ export interface IRepository {
 
   createGame(
     blindTime: number,
+    playersChips: number,
     startTime: DateTime,
     client?: PoolClient | Pool
   ): Promise<Game>;
@@ -31,6 +34,24 @@ export interface IRepository {
     client?: PoolClient | Pool
   ): Promise<Game | null>;
 
+  createGameBlind(
+    game_level: number,
+    smallBlindAmount: number,
+    bigBlindAmount: number,
+    ante: number,
+    client?: PoolClient | Pool
+  ): Promise<GameBlind>;
+
+  getGameBlindByLevel(
+    level: number,
+    client?: PoolClient | Pool
+  ): Promise<GameBlind | null>;
+
+  getGameLevelBlind(
+    gameId: UUID,
+    client?: PoolClient | Pool
+  ): Promise<GameBlind | null>;
+
   createPlayer(
     gameId: UUID,
     name: string,
@@ -39,6 +60,7 @@ export interface IRepository {
     isActive: boolean,
     action: string,
     actionAmount: number,
+    allBetSum: number,
     client?: PoolClient | Pool
   ): Promise<void>;
 
@@ -63,6 +85,18 @@ export interface IRepository {
     client?: PoolClient | Pool
   ): Promise<void>;
 
+  updateActiveNotFoldPlayersByGameId(
+    gameId: UUID,
+    updateData: Partial<Player>,
+    client?: PoolClient | Pool
+  ): Promise<void>;
+
+  updateActiveNotFoldAndNotAllInPlayersByGameId(
+    gameId: UUID,
+    updateData: Partial<Player>,
+    client?: PoolClient | Pool
+  ): Promise<void>;
+
   updatePlayer(
     playerId: UUID,
     updateData: Partial<Player>,
@@ -79,9 +113,10 @@ export interface IRepository {
     gameId: UUID,
     level: number,
     dealer: UUID,
-    smallBlind: UUID,
+    smallBlind: UUID | null,
     bigBlind: UUID,
     potAmount: number,
+    ante: number,
     smallBlindAmount: number,
     bigBlindAmount: number,
     lastCallAmount: number,
@@ -142,6 +177,25 @@ export interface IRepository {
     round: Round,
     client?: PoolClient | Pool
   ): Promise<number>;
+
+  getActionsBetAmountsByHandIdAndPlayerId(
+    handId: UUID,
+    playerId: UUID,
+    client?: PoolClient | Pool
+  ): Promise<number>;
+
+  getActionsByHandIdAndRound(
+    handId: UUID,
+    round: Round,
+    client?: PoolClient | Pool
+  ): Promise<Action[]>;
+
+  hasAllActionTypes(
+    handId: UUID,
+    round: Round,
+    actionTypes: PlayerAction[],
+    client?: PoolClient | Pool
+  ): Promise<boolean>;
 
   getActionsByHandIdAndPlayerIdAndRound(
     handId: UUID,

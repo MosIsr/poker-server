@@ -13,6 +13,8 @@ import DomainError from '../errors/domain.error';
 import Action from 'src/models/action';
 import Game from 'src/models/game';
 import { Round } from 'src/enums/round.enum';
+import GameBlind from 'src/models/game-blinds';
+import { PlayerAction } from 'src/enums/player-action.enum';
 
 
 @injectable()
@@ -68,13 +70,14 @@ export default class Repository
 
   async createGame(
     blindTime: number,
+    playersChips: number,
     startTime: DateTime,
     client?: PoolClient | Pool
   ): Promise<Game> {
     const queryClient = client ?? this.pool;
     const result = await queryClient.query(
-      'INSERT INTO games (id, blind_time, start_time) VALUES ($1, $2, $3) RETURNING *',
-      [randomUUID(), blindTime, startTime]
+      'INSERT INTO games (id, blind_time, chips, start_time) VALUES ($1, $2, $3, $4) RETURNING *',
+      [randomUUID(), blindTime, playersChips, startTime]
     );
     
     return result.rows[0];
@@ -109,27 +112,83 @@ export default class Repository
     }
 
     const result = await queryClient.query(
-      `UPDATE hands SET ${setClauses} WHERE id = $1 RETURNING *`,
+      `UPDATE games SET ${setClauses} WHERE id = $1 RETURNING *`,
       values
     );
     
     return result.rows.length ? result.rows[0] : null;
   }
 
+
+  async createGameBlind(
+    game_level: number,
+    smallBlindAmount: number,
+    bigBlindAmount: number,
+    ante: number,
+    client?: PoolClient | Pool
+  ): Promise<GameBlind> {
+    const queryClient = client ?? this.pool;
+    const result = await queryClient.query(
+      `INSERT INTO game_blinds (
+        id, game_level, small_blind_amount, big_blind_amount, ante
+      ) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [randomUUID(), game_level, smallBlindAmount, bigBlindAmount, ante]
+    );
+    
+    return result.rows[0];
+  }
+
+  async getGameBlindByLevel(
+    level: number,
+    client?: PoolClient | Pool
+  ): Promise<GameBlind | null> {
+    const queryClient = client ?? this.pool;
+    const result = await queryClient.query(
+      'SELECT * FROM game_blinds WHERE game_level = $1',
+      [level]
+    );
+
+    return result.rows.length ? result.rows[0] : null;
+  }
+
+  async getGameLevelBlind(
+    gameId: UUID,
+    client?: PoolClient | Pool
+  ): Promise<GameBlind | null> {
+    const queryClient = client ?? this.pool;
+  
+    const result = await queryClient.query(
+      `
+      SELECT gb.*
+      FROM game_blinds gb
+      JOIN games g ON g.level = gb.game_level
+      WHERE g.id = $1
+      LIMIT 1
+      `,
+      [gameId]
+    );
+  
+    return result.rows.length ? result.rows[0] : null;
+  }
+
+
+
   async createPlayer(
     gameId: UUID,
     name: string,
-    amount: number = 0,
-    isOnline: boolean = false,
-    isActive: boolean = true,
-    action: string = '',
-    actionAmount: number = 0,
+    amount: number,
+    isOnline: boolean,
+    isActive: boolean,
+    action: PlayerAction,
+    actionAmount: number,
+    allBetSum: number,
     client?: PoolClient | Pool
   ): Promise<void> {
     const queryClient = client ?? this.pool;
+
     await queryClient.query(
-      'INSERT INTO players (id, game_id, name, amount, is_online, is_active, action, action_amount) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-      [randomUUID(), gameId, name, amount, isOnline, isActive, action, actionAmount]
+      'INSERT INTO players (id, game_id, name, amount, is_online, is_active, action, action_amount, all_bet_sum) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+      [randomUUID(), gameId, name, amount, isOnline, isActive, action, actionAmount, allBetSum]
     );
   }
 
@@ -192,6 +251,48 @@ export default class Repository
     );
   }
 
+  async updateActiveNotFoldPlayersByGameId(
+    gameId: UUID,
+    updateData: Partial<Player>,
+    client?: PoolClient | Pool
+  ): Promise<void> {
+    const queryClient = client ?? this.pool;
+  
+    const setClauses = Object.keys(updateData)
+      .map((key, index) => `${key} = $${index + 2}`)
+      .join(', ');
+  
+    if (!setClauses) return;
+  
+    const values = [gameId, ...Object.values(updateData)];
+  
+    await queryClient.query(
+      `UPDATE players SET ${setClauses} WHERE game_id = $1 AND is_active = true AND action != 'fold'`,
+      values
+    );
+  }
+
+  async updateActiveNotFoldAndNotAllInPlayersByGameId(
+    gameId: UUID,
+    updateData: Partial<Player>,
+    client?: PoolClient | Pool
+  ): Promise<void> {
+    const queryClient = client ?? this.pool;
+  
+    const setClauses = Object.keys(updateData)
+      .map((key, index) => `${key} = $${index + 2}`)
+      .join(', ');
+  
+    if (!setClauses) return;
+  
+    const values = [gameId, ...Object.values(updateData)];
+  
+    await queryClient.query(
+      `UPDATE players SET ${setClauses} WHERE game_id = $1 AND is_active = true AND action != 'fold' AND action != 'all-in'`,
+      values
+    );
+  }
+
   async updatePlayer(
     playerId: UUID,
     updateData: Partial<Player>,
@@ -236,9 +337,10 @@ export default class Repository
     gameId: UUID,
     level: number,
     dealer: UUID,
-    smallBlind: UUID,
+    smallBlind: UUID | null,
     bigBlind: UUID,
     potAmount: number,
+    ante: number,
     smallBlindAmount: number,
     bigBlindAmount: number,
     lastCallAmount: number,
@@ -253,9 +355,9 @@ export default class Repository
     
     const result = await queryClient.query(
       `INSERT INTO hands (
-        id, game_id, level, dealer, small_blind, big_blind, pot_amount, small_blind_amount, big_blind_amount, last_call_amount, current_max_bet, last_raise_amount, current_round, is_changed_current_round, current_player_turn_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *`,
-      [randomUUID(), gameId, level, dealer, smallBlind, bigBlind, potAmount, smallBlindAmount, bigBlindAmount, lastCallAmount, currentMaxBet, lastRaiseAmount, currentRound, isChangedCurrentRound, currentPlayerTurnId]
+        id, game_id, level, dealer, small_blind, big_blind, pot_amount, ante, small_blind_amount, big_blind_amount, last_call_amount, current_max_bet, last_raise_amount, current_round, is_changed_current_round, current_player_turn_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *`,
+      [randomUUID(), gameId, level, dealer, smallBlind, bigBlind, potAmount, ante, smallBlindAmount, bigBlindAmount, lastCallAmount, currentMaxBet, lastRaiseAmount, currentRound, isChangedCurrentRound, currentPlayerTurnId]
     );
 
     return result.rows[0];
@@ -396,7 +498,7 @@ export default class Repository
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
       [randomUUID(), handId, playerId, round, bettingRound, actionOrder, actionType, betAmount]
     );
-    
+
     return result.rows.length ? result.rows[0] : null;
   }
 
@@ -441,6 +543,59 @@ export default class Repository
     );
     
     return result.rows.length ? +result.rows[0]?.total_bet : 0;
+  }
+
+  async getActionsBetAmountsByHandIdAndPlayerId(
+    handId: UUID,
+    playerId: UUID,
+    client?: PoolClient | Pool
+  ): Promise<number> {
+    const queryClient = client ?? this.pool;
+    const result = await queryClient.query(
+      'SELECT SUM(bet_amount) AS total_bet FROM actions WHERE hand_id = $1 AND player_id = $2',
+      [handId, playerId]
+    );
+    
+    return result.rows.length ? +result.rows[0]?.total_bet : 0;
+  }
+
+  async getActionsByHandIdAndRound(
+    handId: UUID,
+    round: Round,
+    client?: PoolClient | Pool
+  ): Promise<Action[]> {
+    const queryClient = client ?? this.pool;
+    const result = await queryClient.query(
+      'SELECT * FROM actions WHERE hand_id = $1 AND round = $2',
+      [handId, round]
+    );
+    
+    return result.rows.length ? result.rows : [];
+  }
+
+  async hasAllActionTypes(
+    handId: UUID,
+    round: Round,
+    actionTypes: PlayerAction[],
+    client?: PoolClient | Pool
+  ): Promise<boolean> {
+    if (actionTypes.length === 0) return false;
+  
+    const queryClient = client ?? this.pool;
+  
+    const placeholders = actionTypes.map((_, idx) => `$${idx + 3}`).join(', ');
+    const sql = `
+      SELECT COUNT(DISTINCT action_type) = $${actionTypes.length + 3} AS has_all
+      FROM actions
+      WHERE hand_id = $1
+        AND round = $2
+        AND action_type IN (${placeholders})
+    `;
+  
+    const values = [handId, round, ...actionTypes, actionTypes.length];
+    const result = await queryClient.query(sql, values);
+  
+    return result.rows[0]?.has_all ?? false;
   }
 
   async getActionsByHandIdAndPlayerIdAndRound(

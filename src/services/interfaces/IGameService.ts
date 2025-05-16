@@ -1,6 +1,7 @@
 import { UUID } from 'crypto';
 import Hand from 'src/models/hand';
 import Player from 'src/models/player';
+import ActionsOpportunities from 'src/interfaces/actions-opportunities';
 
 export default interface IGameService {
   startGame(blindTime:number, smallBlind: number): Promise<any>;
@@ -29,5 +30,9 @@ export default interface IGameService {
     blindTime: number
   }>;
 
+  getPlayerActionsOpportunities(
+    gameId: UUID,
+    handId: UUID,
+  ): Promise<ActionsOpportunities>;
 }
 

@@ -7,9 +7,10 @@ export default interface Hand {
   game_id: UUID;
   level: number;
   dealer: UUID;
-  small_blind: UUID;
+  small_blind: UUID | null;
   big_blind: UUID;
   pot_amount: number;
+  ante: number;
   small_blind_amount: number;
   big_blind_amount: number;
   last_call_amount: number;

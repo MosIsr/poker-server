@@ -32,7 +32,7 @@ exports.up = async (pgm) => {
     small_blind: {
       type: 'uuid',
       references: 'players (id)',
-      notNull: true,
+      notNull: false,
     },
     big_blind: {
       type: 'uuid',
@@ -40,6 +40,11 @@ exports.up = async (pgm) => {
       notNull: true,
     },
     pot_amount: {
+      type: 'numeric',
+      notNull: true,
+      default: 0,
+    },
+    ante: {
       type: 'numeric',
       notNull: true,
       default: 0,
