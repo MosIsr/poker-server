@@ -665,7 +665,7 @@ export default class GameService implements IGameService {
           })
         );
         const allActionAmountsEqual = playersBetAmounts.every((element) => element === playersBetAmounts[0]);
-        const allPlayerActionEqual = activeNotFoldedPlayers.every((element) => element.action === activeNotFoldedPlayers[0].action && ![PlayerAction.Raise].includes(element.action));
+        const allPlayerActionEqual = activeNotFoldedPlayers.every((element) => element.action === activeNotFoldedPlayers[0].action && ![PlayerAction.Raise, PlayerAction.ReRaise].includes(element.action));
         
         let nextActivePlayer = null;
         
