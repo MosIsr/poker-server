@@ -69,13 +69,17 @@ export default class GameService implements IGameService {
 
       let players = await this.repository.getPlayers(game.id);
       const handLevel = 1;
-
+      const dealerId = players[0].id;
+      const smallBlindId = players[1].id;
+      const bigBlindId = players[2].id;
+      const currentPlayerTurnId = players[3].id;
+      
       const hand = await this.repository.createHand(
         game.id,
         handLevel,
-        players[0].id,
-        players[1].id,
-        players[2].id,
+        dealerId,
+        smallBlindId,
+        bigBlindId,
         0,
         ante,
         smallBlindAmount,
@@ -85,13 +89,11 @@ export default class GameService implements IGameService {
         0,
         Round.Preflop,
         false,
-        players[3].id,
+        currentPlayerTurnId,
       );
 
-      await Promise.all([
-        this.performAction(game.id, hand.id, players[1].id, PlayerAction.Bet, smallBlindAmount),
-        this.performAction( game.id, hand.id, players[2].id, PlayerAction.Raise, bigBlindAmount),
-      ]);
+      await this.performAction(game.id, hand.id, smallBlindId, PlayerAction.Bet, smallBlindAmount);
+      await this.performAction( game.id, hand.id, bigBlindId, PlayerAction.Raise, bigBlindAmount);
       
       const playerActions = await this.getPlayerActionsOpportunities(game.id, hand.id);
 
