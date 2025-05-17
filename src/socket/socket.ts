@@ -73,6 +73,5 @@ export function setupSocketIO(io: Server) {
       );
       socket.emit('game-data', response);
     })
-
   });
 }

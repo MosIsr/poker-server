@@ -88,30 +88,27 @@ export default class GameService implements IGameService {
         players[3].id,
       );
 
-      await this.performAction(
-        game.id,
-        hand.id,
-        players[1].id,
-        PlayerAction.Bet,
-        smallBlindAmount,
-      );
-      await this.performAction(
-        game.id,
-        hand.id,
-        players[2].id,
-        PlayerAction.Raise,
-        bigBlindAmount,
-      );
-
+      await Promise.all([
+        this.performAction(game.id, hand.id, players[1].id, PlayerAction.Bet, smallBlindAmount),
+        this.performAction( game.id, hand.id, players[2].id, PlayerAction.Raise, bigBlindAmount),
+      ]);
+      
       const playerActions = await this.getPlayerActionsOpportunities(game.id, hand.id);
-      const updatedHand = await this.repository.getHandById(hand.id);
+
+      const [
+        updatedHand,
+        updatedPlayers,
+      ] = await Promise.all([
+        this.repository.getHandById(hand.id),
+        this.repository.getPlayers(game.id),
+      ]);
+       
       if(!updatedHand) {
         throw new Error(`Ձեռքը ${hand.id} համարով գոյություն չունի`);
       }
-      players = await this.repository.getPlayers(game.id);
 
       return {
-        players,
+        players: updatedPlayers,
         hand: updatedHand,
         level: handLevel,
         blindTime,
@@ -127,29 +124,32 @@ export default class GameService implements IGameService {
     gameId: UUID,
     handId: UUID,
   ): Promise<ActionsOpportunities> {
-
-    const game = await this.repository.getGame(gameId);
+    const [
+      game,
+      hand,
+    ] = await Promise.all([
+      this.repository.getGame(gameId),
+      this.repository.getHandById(handId),
+    ])
     if (!game) {
       throw new Error(`Խաղը ${gameId} համարով գոյություն չունի`);
     }
-    const hand = await this.repository.getHandById(handId);
     if (!hand) {
       throw new Error(`Ձեռքը ${handId} համարով գոյություն չունի`);
     }
+
     const currentRound = hand.current_round;
-    const isCurrentRoundHaveBet = await this.repository.hasAllActionTypes(
-      handId,
-      currentRound,
-      [PlayerAction.Bet]
-    );
 
-    const isCurrentRoundHaveBetAndRaise = await this.repository.hasAllActionTypes(
-      handId,
-      currentRound,
-      [PlayerAction.Bet, PlayerAction.Raise]
-    );
+    const [
+      isCurrentRoundHaveBet,
+      isCurrentRoundHaveBetAndRaise,
+      turnPlayer,
+    ] = await Promise.all([
+      this.repository.hasAllActionTypes(handId, currentRound, [PlayerAction.Bet]),
+      this.repository.hasAllActionTypes(handId, currentRound, [PlayerAction.Bet, PlayerAction.Raise]),
+      this.repository.getPlayerById(hand.current_player_turn_id),
+    ]);
 
-    const turnPlayer = await this.repository.getPlayerById(hand.current_player_turn_id);
     if (!turnPlayer) {
       throw new Error(`Խաղացողը ${hand.current_player_turn_id} համարով գոյություն չունի`);
     }
@@ -189,7 +189,6 @@ export default class GameService implements IGameService {
     return actions;
   }
 
-
   async performAction(
     gameId: UUID,
     handId: UUID,
@@ -198,13 +197,17 @@ export default class GameService implements IGameService {
     betAmount?: number,
   ): Promise<void> {
     console.log('+++++++++++++++ START ACTION +++++++++++++++');
-    const hand = await this.repository.getHandById(handId);
+    const [
+      hand,
+      player,
+    ] = await Promise.all([
+      this.repository.getHandById(handId),
+      this.repository.getPlayerById(playerId),
+    ]);
     
     if (!hand) {
       throw new Error(`Ձեռքը ${handId} համարով գոյություն չունի`);
     }
-
-    const player = await this.repository.getPlayerById(playerId);
     if (!player) {
       throw new Error(`Խաղացողը ${playerId} համարով գոյություն չունի`);
     }
@@ -262,21 +265,7 @@ export default class GameService implements IGameService {
         hand,
         playerId,
       );
-      
     }
-
-    
-
-    console.log('========================================');
-    console.log('');
-    console.log('');
-    console.log('');
-    console.log('');
-    
-    // Ավելացնել տրամաբանություն փուլի ավարտի և հաջորդ փուլին անցնելու համար
-
-
-
 
     console.log('+++++++++++++++ END ACTION +++++++++++++++');
   }
@@ -291,27 +280,28 @@ export default class GameService implements IGameService {
 
     const player = await this.repository.getPlayerById(playerId);
     if(player && betAmount) {
-      await this.repository.updatePlayer(
-        playerId,
-        {
-          amount: player?.amount - betAmount,
-          action: PlayerAction.Bet,
-          action_amount: +betAmount,
-          all_bet_sum: +player.all_bet_sum + +betAmount,
-        }
-      );
-      await this.repository.updateHand(
-        hand.id,
-        {
-          pot_amount: +hand.pot_amount + +betAmount,
-          last_raise_amount: betAmount,
-          current_max_bet: betAmount,
-        }
-      );
+      await Promise.all([
+        this.repository.updatePlayer(
+          playerId,
+          {
+            amount: player?.amount - betAmount,
+            action: PlayerAction.Bet,
+            action_amount: +betAmount,
+            all_bet_sum: +player.all_bet_sum + +betAmount,
+          }
+        ),
+        this.repository.updateHand(
+          hand.id,
+          {
+            pot_amount: +hand.pot_amount + +betAmount,
+            last_raise_amount: betAmount,
+            current_max_bet: betAmount,
+          }
+        )
+      ]);
     }
 
     const { currentBettingRound, actionOrder } = await this.getActionOrders(hand.id);
-    
     let currentBetAmount = betAmount || 0;
 
     await this.repository.createAction(
@@ -345,23 +335,25 @@ export default class GameService implements IGameService {
     
     const player = await this.repository.getPlayerById(playerId);
     if(player && betAmount) {
-      await this.repository.updatePlayer(
-        playerId,
-        { 
-          amount: player?.amount - betAmount,
-          action: PlayerAction.Raise,
-          action_amount: +betAmount,
-          all_bet_sum: +player.all_bet_sum + +betAmount,
-        }
-      );
-      await this.repository.updateHand(
-        hand.id,
-        {
-          pot_amount: +hand.pot_amount + +betAmount,
-          last_raise_amount: betAmount - hand.current_max_bet,
-          current_max_bet: betAmount,
-        }
-      );
+      await Promise.all([
+        this.repository.updatePlayer(
+          playerId,
+          { 
+            amount: player?.amount - betAmount,
+            action: PlayerAction.Raise,
+            action_amount: +betAmount,
+            all_bet_sum: +player.all_bet_sum + +betAmount,
+          }
+        ),
+        this.repository.updateHand(
+          hand.id,
+          {
+            pot_amount: +hand.pot_amount + +betAmount,
+            last_raise_amount: betAmount - hand.current_max_bet,
+            current_max_bet: betAmount,
+          }
+        )
+      ]);
     }
 
     const { currentBettingRound, actionOrder } = await this.getActionOrders(hand.id);
@@ -402,23 +394,25 @@ export default class GameService implements IGameService {
 
     const player = await this.repository.getPlayerById(playerId);
     if(player && betAmount) {
-      await this.repository.updatePlayer(
-        playerId,
-        { 
-          amount: player?.amount - mustBeBet,
-          action: PlayerAction.ReRaise,
-          action_amount: +betAmount,
-          all_bet_sum: +player.all_bet_sum + +mustBeBet,
-        }
-      );
-      await this.repository.updateHand(
-        hand.id,
-        {
-          pot_amount: +hand.pot_amount + +mustBeBet,
-          last_raise_amount: betAmount,
-          current_max_bet: betAmount,
-        }
-      );
+      await Promise.all([
+        this.repository.updatePlayer(
+          playerId,
+          { 
+            amount: player?.amount - mustBeBet,
+            action: PlayerAction.ReRaise,
+            action_amount: +betAmount,
+            all_bet_sum: +player.all_bet_sum + +mustBeBet,
+          }
+        ),
+        this.repository.updateHand(
+          hand.id,
+          {
+            pot_amount: +hand.pot_amount + +mustBeBet,
+            last_raise_amount: betAmount,
+            current_max_bet: betAmount,
+          }
+        )
+      ]);
     }
 
     const { currentBettingRound, actionOrder } = await this.getActionOrders(hand.id);
@@ -442,13 +436,18 @@ export default class GameService implements IGameService {
     playerId: UUID,
   ) {
     console.log('************** START CALL **************');
-    const turnPlayerBetAmounts = await this.repository.getActionsBetAmountsByHandIdAndPlayerIdAndRound(
-      hand.id,
-      hand.current_player_turn_id,
-      hand.current_round
-    );
-    
-    const turnPlayer = await this.repository.getPlayerById(hand.current_player_turn_id);
+    const [
+      turnPlayerBetAmounts,
+      turnPlayer,
+    ] =  await Promise.all([
+      this.repository.getActionsBetAmountsByHandIdAndPlayerIdAndRound(
+        hand.id,
+        hand.current_player_turn_id,
+        hand.current_round
+      ),
+      this.repository.getPlayerById(hand.current_player_turn_id)
+    ]);
+
     if (!turnPlayer) {
       throw new Error(`Խաղացողը ${hand.current_player_turn_id} համարով գոյություն չունի`);
     }
@@ -464,16 +463,18 @@ export default class GameService implements IGameService {
 
     const player = await this.repository.getPlayerById(playerId);
     if (player) {
-      await this.repository.updateHandPot(hand.id, +hand.pot_amount + callAmount);
-      await this.repository.updatePlayer(
-        playerId,
-        { 
-          amount: player?.amount - callAmount,
-          action: action,
-          action_amount: callAmount + +turnPlayerBetAmounts,
-          all_bet_sum: +player.all_bet_sum + +callAmount,
-        }
-      );
+      await Promise.all([
+        this.repository.updateHandPot(hand.id, +hand.pot_amount + callAmount),
+        this.repository.updatePlayer(
+          playerId,
+          { 
+            amount: player?.amount - callAmount,
+            action: action,
+            action_amount: callAmount + +turnPlayerBetAmounts,
+            all_bet_sum: +player.all_bet_sum + +callAmount,
+          }
+        )
+      ]);
     }
 
     const { currentBettingRound, actionOrder } = await this.getActionOrders(hand.id);
@@ -552,39 +553,41 @@ export default class GameService implements IGameService {
   ) {
     console.log('************** START ALL IN **************');
     let betAmount = 0;
-    const playerAllBet = await this.repository.getActionsBetAmountsByHandIdAndPlayerId(hand.id, playerId);
-    console.log('playerAllBet', playerAllBet);
-    
-    const player = await this.repository.getPlayerById(playerId);
+
+    const [
+      playerAllBet,
+      player,
+    ] = await Promise.all([
+      this.repository.getActionsBetAmountsByHandIdAndPlayerId(hand.id, playerId),
+      this.repository.getPlayerById(playerId),
+    ]);
+
     if (player) {
       betAmount = +player.amount;
-      // await this.repository.updateHandPot(hand.id, +hand.pot_amount + betAmount);
-      console.log('betAmount', betAmount);
-      console.log('playerAllBet', playerAllBet);
-      
-      await this.repository.updatePlayer(
-        playerId,
-        { 
-          amount: 0,
-          action: PlayerAction.AllIn,
-          action_amount: +betAmount + +playerAllBet,
-          all_bet_sum: +player.all_bet_sum + +betAmount,
-        }
-      );
       let currentMaxBet = hand.current_max_bet;
-
       if (currentMaxBet < +player.amount + +playerAllBet) {
         currentMaxBet = +player.amount + +playerAllBet;
       }
 
-      await this.repository.updateHand(
-        hand.id,
-        {
-          pot_amount: +hand.pot_amount + +betAmount,
-          last_raise_amount: currentMaxBet,
-          current_max_bet: currentMaxBet,
-        }
-      );
+      await Promise.all([
+        this.repository.updatePlayer(
+          playerId,
+          { 
+            amount: 0,
+            action: PlayerAction.AllIn,
+            action_amount: +betAmount + +playerAllBet,
+            all_bet_sum: +player.all_bet_sum + +betAmount,
+          }
+        ),
+        this.repository.updateHand(
+          hand.id,
+          {
+            pot_amount: +hand.pot_amount + +betAmount,
+            last_raise_amount: currentMaxBet,
+            current_max_bet: currentMaxBet,
+          }
+        )
+      ]);
     }
 
     const { currentBettingRound, actionOrder } = await this.getActionOrders(hand.id);
@@ -631,7 +634,6 @@ export default class GameService implements IGameService {
     return await this.repository.getGameLastHandByGameId(gameId);
   }
 
-
   async nextPlayer(
     gameId: UUID,
     handId: UUID,
@@ -646,11 +648,9 @@ export default class GameService implements IGameService {
       const activePlayers = await this.repository.getPlayers(gameId);
       const foldingPlayerIndex = activePlayers.findIndex(p => p.id === playerId);
       const activeNotFoldedPlayers = activePlayers.filter(p => p.is_active && p.action !== PlayerAction.Fold);
-      console.log('************activeNotFoldedPlayers********************', activeNotFoldedPlayers);
       if (activeNotFoldedPlayers.length < 2) {
         await this.repository.updateHand(handId, { current_round: Round.Showdown });
       } else {
-        const playerTotalBetInCurrentRound = await this.repository.getActionsBetAmountsByHandIdAndPlayerIdAndRound(handId, playerId, hand.current_round);
         const playersCurrentRoundActions = await Promise.all(
           activeNotFoldedPlayers.map(player => {
             return this.repository.getActionsByHandIdAndPlayerIdAndRound(handId, player.id, hand.current_round);
@@ -664,12 +664,8 @@ export default class GameService implements IGameService {
             return this.repository.getActionsBetAmountsByHandIdAndPlayerIdAndRound(handId, player.id, hand.current_round);
           })
         );
-        console.log('playersBetAmounts', playersBetAmounts);
-        console.log('activeNotFoldedPlayers', activeNotFoldedPlayers);
-        
         const allActionAmountsEqual = playersBetAmounts.every((element) => element === playersBetAmounts[0]);
         const allPlayerActionEqual = activeNotFoldedPlayers.every((element) => element.action === activeNotFoldedPlayers[0].action && ![PlayerAction.Raise].includes(element.action));
-        console.log('allPlayerActionEqual', allPlayerActionEqual);
         
         let nextActivePlayer = null;
         
@@ -690,14 +686,16 @@ export default class GameService implements IGameService {
           const nextRound = nextRoundMap[currentRound];
           
           if (nextRound && nextRound !== currentRound) {
-            await this.repository.updateActiveNotFoldAndNotAllInPlayersByGameId(
-              gameId,
-              {
-                action: PlayerAction.Active,
-                action_amount: 0,
-              }
-            )
-            await this.repository.updateHand(handId, { current_round: nextRound, is_changed_current_round: true });
+            await Promise.all([
+              this.repository.updateActiveNotFoldAndNotAllInPlayersByGameId(
+                gameId,
+                {
+                  action: PlayerAction.Active,
+                  action_amount: 0,
+                }
+              ),
+              this.repository.updateHand(handId, { current_round: nextRound, is_changed_current_round: true })
+            ]);
             console.log(`Moved to next round: ${nextRound}`);
           } else {
             console.log('Already at the last round: Showdown');
@@ -749,7 +747,6 @@ export default class GameService implements IGameService {
     }
   }
 
-
   async handleNextHand(
     gameId: UUID,
     handId: UUID,
@@ -764,17 +761,22 @@ export default class GameService implements IGameService {
     for (const winner of winners) {
       await this.repository.incrementPlayerAmount(winner.id, winner.amount)
     }
-    const hand = await this.createNewHand(gameId, handId);
+    const [
+      hand,
+      gameBlind,
+      players,
+    ] = await Promise.all([
+      this.createNewHand(gameId, handId),
+      this.repository.getGameLevelBlind(gameId),
+      this.repository.getPlayers(gameId),
+    ]);
+
     if(!hand) {
       throw new Error('Not find hand.');
     }
-
-    const gameBlind = await this.repository.getGameLevelBlind(gameId);
     if (!gameBlind) {
       throw new Error(`Blind configuration not found for the game's current level.`);
     }
-
-    let players = await this.repository.getPlayers(gameId);
     if(!players) {
       throw new Error('Not find players.');
     }
@@ -788,7 +790,6 @@ export default class GameService implements IGameService {
       }
     }
     await this.repository.updatePlayersByGameId(gameId, { action: PlayerAction.Active,  action_amount: 0})
-
     
     if (hand.small_blind) {
       await this.performAction(
@@ -808,23 +809,30 @@ export default class GameService implements IGameService {
       gameBlind.big_blind_amount,
     );
 
-    players = await this.repository.getPlayers(gameId);
-    if(!players) {
+    const [
+      game,
+      updatedPlayers,
+      playerActions,
+      updatedHand,
+    ] = await Promise.all([
+      this.repository.getGame(gameId),
+      this.repository.getPlayers(gameId),
+      this.getPlayerActionsOpportunities(gameId, hand.id),
+      this.repository.getHandById(hand.id),
+    ]);
+
+    if(!updatedPlayers) {
       throw new Error('Not find players.');
     }
-    const game = await this.repository.getGame(gameId);
     if(!game) {
       throw new Error('Not find game.');
     }
-
-    const playerActions = await this.getPlayerActionsOpportunities(gameId, hand.id);
-    const updatedHand = await this.repository.getHandById(hand.id);
     if(!updatedHand) {
       throw new Error('Not find hand.');
     }
 
     return {
-      players,
+      players: updatedPlayers,
       hand: updatedHand,
       level: game.level,
       blindTime: game.blind_time,
@@ -838,15 +846,21 @@ export default class GameService implements IGameService {
   ): Promise<Hand | null> {
     console.log('=========== CREATE NEW HAND ============');
 
-    const lastHand = await this.repository.getHandById(lastHandId);
+    const [
+      lastHand,
+      players,
+    ] = await Promise.all([
+      this.repository.getHandById(lastHandId),
+      this.repository.getPlayers(gameId),
+    ]);
+
     if(!lastHand) {
       throw new Error('Not find hand.');
     }
-    const players = await this.repository.getPlayers(gameId);
+    
     const activePlayers = players.filter(p => p.is_active);
     if (activePlayers.length < 2) {
       throw new Error('Not enough active players to start a hand.');
-      // END GAME
     }
 
     const currentDealerIndex = players.findIndex(p => p.id === lastHand.dealer);

@@ -321,13 +321,22 @@ export default class Repository
     client?: PoolClient | Pool
   ): Promise<Player | null> {
     const queryClient = client ?? this.pool;
-     
-    const result = await queryClient.query(
-      `UPDATE players SET amount = amount + $2 WHERE id = $1 RETURNING *`,
-      [playerId, amount]
-    );
-
-    return result.rows.length ? result.rows[0] : null;
+    console.log('playerId', playerId);
+    console.log('amount', amount);
+    
+     try {
+      
+       const result = await queryClient.query(
+         `UPDATE players SET amount = amount + $2 WHERE id = $1 RETURNING *`,
+         [playerId, amount]
+       );
+   
+       return result.rows.length ? result.rows[0] : null;
+     } catch (error) {
+      console.log('error', error);
+      
+      return null
+     }
   }
 
 
