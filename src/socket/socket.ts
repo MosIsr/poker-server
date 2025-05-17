@@ -70,6 +70,7 @@ export function setupSocketIO(io: Server) {
         data.gameId,
         data.handId,
         data.winners,
+        data.gameLevel
       );
       socket.emit('game-data', response);
     })

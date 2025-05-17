@@ -23,6 +23,7 @@ export default interface IGameService {
     gameId: UUID,
     handId: UUID,
     winners: Array<{id: UUID, amount: number}>,
+    gameLevel: number,
   ): Promise<{
     players: Player[];
     hand: Hand;

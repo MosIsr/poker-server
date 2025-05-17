@@ -751,6 +751,7 @@ export default class GameService implements IGameService {
     gameId: UUID,
     handId: UUID,
     winners: Array<{id: UUID, amount: number}>,
+    gameLevel: number,
   ): Promise<{
     players: Player[];
     hand: Hand;
@@ -761,6 +762,8 @@ export default class GameService implements IGameService {
     for (const winner of winners) {
       await this.repository.incrementPlayerAmount(winner.id, winner.amount)
     }
+    await this.repository.updateGame(gameId, { level: gameLevel });
+
     const [
       hand,
       gameBlind,
