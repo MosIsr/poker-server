@@ -648,8 +648,14 @@ export default class GameService implements IGameService {
     const hand = await this.repository.getHandById(handId);    
     if (hand) {
       const activePlayers = await this.repository.getPlayers(gameId);
+      console.log('activePlayers', activePlayers);
+      
       const foldingPlayerIndex = activePlayers.findIndex(p => p.id === playerId);
+      console.log('foldingPlayerIndex', foldingPlayerIndex);
+
       const activeNotFoldedPlayers = activePlayers.filter(p => p.is_active && p.action !== PlayerAction.Fold);
+      console.log('activeNotFoldedPlayers', activeNotFoldedPlayers);
+
       if (activeNotFoldedPlayers.length < 2) {
         await this.repository.updateHand(handId, { current_round: Round.Showdown });
       } else {
@@ -658,16 +664,27 @@ export default class GameService implements IGameService {
             return this.repository.getActionsByHandIdAndPlayerIdAndRound(handId, player.id, hand.current_round);
           })
         );
+        console.log('playersCurrentRoundActions', playersCurrentRoundActions);
+
         const allPlayersActedCurrentRound = playersCurrentRoundActions.every(action => action.length > 0);
-        const allPlayersActed = activeNotFoldedPlayers.every(player => player.action !== null && player.action !== '');
+        console.log('allPlayersActedCurrentRound', allPlayersActedCurrentRound);
         
+        const allPlayersActed = activeNotFoldedPlayers.every(player => player.action !== null && player.action !== '');
+        console.log('allPlayersActed', allPlayersActed);
+        
+
         const playersBetAmounts = await Promise.all(
           activeNotFoldedPlayers.map(player => {
             return this.repository.getActionsBetAmountsByHandIdAndPlayerIdAndRound(handId, player.id, hand.current_round);
           })
         );
+        console.log('playersBetAmounts', playersBetAmounts);
+
         const allActionAmountsEqual = playersBetAmounts.every((element) => element === playersBetAmounts[0]);
+        console.log('allActionAmountsEqual', allActionAmountsEqual);
+        
         const allPlayerActionEqual = activeNotFoldedPlayers.every((element) => element.action === activeNotFoldedPlayers[0].action && ![PlayerAction.Raise, PlayerAction.ReRaise].includes(element.action));
+        console.log('allPlayerActionEqual', allPlayerActionEqual);
         
         let nextActivePlayer = null;
         
@@ -675,8 +692,11 @@ export default class GameService implements IGameService {
     
           console.log('All active players have equal action_amount!');
           const isAllPlayerActionAllIn = activeNotFoldedPlayers.every((element) => element.action === PlayerAction.AllIn);
-          
+          console.log('isAllPlayerActionAllIn', isAllPlayerActionAllIn);
+
           const currentRound = isAllPlayerActionAllIn ? Round.River : hand.current_round;
+          console.log('currentRound', currentRound);
+
           const nextRoundMap = {
             [Round.Preflop]: Round.Flop,
             [Round.Flop]: Round.Turn,
@@ -686,7 +706,8 @@ export default class GameService implements IGameService {
           };
       
           const nextRound = nextRoundMap[currentRound];
-          
+          console.log('nextRound', nextRound);
+
           if (nextRound && nextRound !== currentRound) {
             await Promise.all([
               this.repository.updateActiveNotFoldAndNotAllInPlayersByGameId(
@@ -739,7 +760,8 @@ export default class GameService implements IGameService {
               attempts++;
             }
           }
-        }    
+        }
+
         if (nextActivePlayer) {
           await this.repository.updateHand(handId, { current_player_turn_id: nextActivePlayer.id, is_changed_current_round: false });
         } else {
