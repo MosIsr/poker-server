@@ -305,6 +305,7 @@ export default class GameService implements IGameService {
 
     const { currentBettingRound, actionOrder } = await this.getActionOrders(hand.id);
     let currentBetAmount = betAmount || 0;
+    const actionOrderCurrentLoop = 0;
 
     await this.repository.createAction(
       hand.id,
@@ -312,6 +313,7 @@ export default class GameService implements IGameService {
       hand.current_round,
       currentBettingRound,
       actionOrder,
+      actionOrderCurrentLoop,
       PlayerAction.Bet,
       currentBetAmount,
     );
@@ -361,6 +363,7 @@ export default class GameService implements IGameService {
     const { currentBettingRound, actionOrder } = await this.getActionOrders(hand.id);
     
     let currentBetAmount = betAmount || 0;
+    const actionOrderCurrentLoop = 0;
 
     await this.repository.createAction(
       hand.id,
@@ -368,6 +371,7 @@ export default class GameService implements IGameService {
       hand.current_round,
       currentBettingRound,
       actionOrder,
+      actionOrderCurrentLoop,
       PlayerAction.Raise,
       currentBetAmount,
     );
@@ -419,12 +423,15 @@ export default class GameService implements IGameService {
 
     const { currentBettingRound, actionOrder } = await this.getActionOrders(hand.id);
 
+    const actionOrderCurrentLoop = 0;
+
     await this.repository.createAction(
       hand.id,
       playerId,
       hand.current_round,
       currentBettingRound,
       actionOrder,
+      actionOrderCurrentLoop,
       PlayerAction.ReRaise,
       mustBeBet,
     );
@@ -481,12 +488,14 @@ export default class GameService implements IGameService {
 
     const { currentBettingRound, actionOrder } = await this.getActionOrders(hand.id);
 
+    const actionOrderCurrentLoop = 0;
     await this.repository.createAction(
       hand.id,
       playerId,
       hand.current_round,
       currentBettingRound,
       actionOrder,
+      actionOrderCurrentLoop,
       action,
       callAmount,
     );
@@ -507,13 +516,14 @@ export default class GameService implements IGameService {
     }
 
     const { currentBettingRound, actionOrder } = await this.getActionOrders(hand.id);
-    
+    const actionOrderCurrentLoop = 0;
     await this.repository.createAction(
       hand.id,
       playerId,
       hand.current_round,
       currentBettingRound,
       actionOrder,
+      actionOrderCurrentLoop,
       PlayerAction.Fold,
       0,
     );
@@ -535,12 +545,14 @@ export default class GameService implements IGameService {
     if (player) {
       await this.repository.updatePlayer(playerId, { action: PlayerAction.Check, action_amount: 0 });
     }
+    const actionOrderCurrentLoop = 0;
     await this.repository.createAction(
       hand.id,
       playerId,
       hand.current_round,
       currentBettingRound,
       actionOrder,
+      actionOrderCurrentLoop,
       PlayerAction.Check,
       0,
     );
@@ -593,13 +605,14 @@ export default class GameService implements IGameService {
     }
 
     const { currentBettingRound, actionOrder } = await this.getActionOrders(hand.id);
-    
+    const actionOrderCurrentLoop = 0;
     await this.repository.createAction(
       hand.id,
       playerId,
       hand.current_round,
       currentBettingRound,
       actionOrder,
+      actionOrderCurrentLoop,
       PlayerAction.AllIn,
       betAmount,
     );
@@ -637,6 +650,303 @@ export default class GameService implements IGameService {
   }
 
   async nextPlayer(
+    gameId: UUID,
+    handId: UUID,
+    playerId: UUID,
+  ): Promise<void> {
+    console.log('');
+    console.log('************** HANDLE NEXT PLAYER **************');
+    console.log('');
+    
+    const hand = await this.repository.getHandById(handId);    
+    if (hand) {
+      const activePlayers = await this.repository.getPlayers(gameId);
+      console.log('activePlayers', activePlayers);
+      
+      const foldingPlayerIndex = activePlayers.findIndex(p => p.id === playerId);
+      console.log('foldingPlayerIndex', foldingPlayerIndex);
+
+      const activeNotFoldedPlayers = activePlayers.filter(p => p.is_active && p.action !== PlayerAction.Fold);
+      console.log('activeNotFoldedPlayers', activeNotFoldedPlayers);
+
+      if (activeNotFoldedPlayers.length < 2) {
+        await this.repository.updateHand(handId, { current_round: Round.Showdown });
+      } else {
+        const playersCurrentRoundActions = await Promise.all(
+          activeNotFoldedPlayers.map(player => {
+            return this.repository.getActionsByHandIdAndPlayerIdAndRound(handId, player.id, hand.current_round);
+          })
+        );
+        // console.log('playersCurrentRoundActions', playersCurrentRoundActions);
+
+        const allPlayersActedCurrentRound = playersCurrentRoundActions.every(action => action.length > 0);
+        console.log('allPlayersActedCurrentRound***************', allPlayersActedCurrentRound);
+        
+        const allPlayersActed = activeNotFoldedPlayers.every(player => player.action !== null && player.action !== '');
+        console.log('allPlayersActed', allPlayersActed);
+        
+
+        const playersBetAmounts = await Promise.all(
+          activeNotFoldedPlayers.map(player => {
+            return this.repository.getActionsBetAmountsByHandIdAndPlayerIdAndRound(handId, player.id, hand.current_round);
+          })
+        );
+        console.log('playersBetAmounts', playersBetAmounts);
+
+        const maxBetCurrentRound = Math.max(...playersBetAmounts);
+
+        const allActionAmountsEqual = playersBetAmounts.every((element) => element === maxBetCurrentRound);
+        console.log('allActionAmountsEqual', allActionAmountsEqual);
+        
+        const allPlayerActionEqual = activeNotFoldedPlayers.every((element) => element.action === activeNotFoldedPlayers[0].action && ![PlayerAction.Raise, PlayerAction.ReRaise].includes(element.action));
+        console.log('allPlayerActionEqual', allPlayerActionEqual);
+        
+
+        // let nextActivePlayer = null;
+        let currentPlayerIndex = foldingPlayerIndex + 1;
+
+        const nextRoundMap = {
+          [Round.Preflop]: Round.Flop,
+          [Round.Flop]: Round.Turn,
+          [Round.Turn]: Round.River,
+          [Round.River]: Round.Showdown,
+          [Round.Showdown]: Round.Showdown,
+        };
+
+        const isAllPlayerActionAllIn = activeNotFoldedPlayers.every((element) => element.action === PlayerAction.AllIn);
+        console.log('isAllPlayerActionAllIn', isAllPlayerActionAllIn);
+
+        const currentRound = isAllPlayerActionAllIn ? Round.River : hand.current_round;
+        console.log('currentRound', currentRound);
+        const nextRound = nextRoundMap[currentRound];
+
+        console.log('nextRound', nextRound);
+
+        if (allPlayersActedCurrentRound) {
+          console.log('======================= allPlayersActedCurrentRound =======================');
+          
+          if(allActionAmountsEqual) {
+            if (nextRound && nextRound !== currentRound) {
+              await Promise.all([
+                this.repository.updateActiveNotFoldAndNotAllInPlayersByGameId(
+                  gameId,
+                  {
+                    action: PlayerAction.Active,
+                    action_amount: 0,
+                  }
+                ),
+                this.repository.updateHand(handId, { current_round: nextRound, is_changed_current_round: true })
+              ]);
+              console.log(`Moved to next round: ${nextRound}`);
+            } else {
+              console.log('Already at the last round: Showdown');
+            }
+
+            const players = await this.repository.getPlayers(gameId);
+            const dealerPlayerIndex = players.findIndex(p => p.id === hand.dealer);
+            console.log('dealerPlayerIndex', dealerPlayerIndex);
+            
+
+            const total = players.length;
+            console.log('total', total);
+
+            let nextIndex = -1;
+
+            for (let offset = 1; offset < total; offset++) {
+              const i = (dealerPlayerIndex + offset) % total;
+              console.log('iiiiiiiii', i);
+              
+              const player = players[i];
+
+              if (
+                player.is_active &&
+                player.action !== 'all-in' &&
+                player.action !== 'fold'
+              ) {
+                nextIndex = i;
+                break;
+              }
+            }
+
+            console.log('Next valid player index:', nextIndex);
+            if (nextIndex === -1) {
+              console.log('No valid next player found');
+            }
+            
+            currentPlayerIndex = nextIndex;
+          } else {
+            console.log('======================= all Action Amounts NOT Equal =======================');
+
+            console.log('maxBetCurrentRound', maxBetCurrentRound);
+            
+            const result = playersBetAmounts
+              .map((val, idx) => val !== maxBetCurrentRound ? idx : -1)
+              .filter(idx => idx !== -1);
+            console.log('result******************', result); // []
+
+            let isAllNotEqualerPlayerActionAllIn = true;
+            result.forEach((index) => {
+              const player = activeNotFoldedPlayers[index];
+              if(player.action !== PlayerAction.AllIn) {
+                isAllNotEqualerPlayerActionAllIn = false;
+              }
+            });
+            console.log('===isAllNotEqualerPlayerActionAllIn=========', isAllNotEqualerPlayerActionAllIn);
+            
+            if (isAllNotEqualerPlayerActionAllIn) {
+              if (nextRound && nextRound !== currentRound) {
+                await Promise.all([
+                  this.repository.updateActiveNotFoldAndNotAllInPlayersByGameId(
+                    gameId,
+                    {
+                      action: PlayerAction.Active,
+                      action_amount: 0,
+                    }
+                  ),
+                  this.repository.updateHand(handId, { current_round: nextRound, is_changed_current_round: true })
+                ]);
+                console.log(`Moved to next round: ${nextRound}`);
+              } else {
+                console.log('Already at the last round: Showdown');
+              }
+  
+              const players = await this.repository.getPlayers(gameId);
+              const bigBlindPlayerIndex = players.findIndex(p => p.id === hand.dealer);
+              if (bigBlindPlayerIndex === -1) {
+                console.error('Big blind player not found!');
+                return;
+              }
+              currentPlayerIndex = bigBlindPlayerIndex;
+
+            } else {
+              // 
+              console.log('nnnnnnnnnnnnnnnnnnnnnnn');
+
+              
+              
+            }
+
+
+          }
+
+
+          
+
+        } else {
+          // next plyer
+          console.log('next plyer-------------');
+        }
+
+        const nextActivePlayer = this.getNextActivePlayer(activePlayers, currentPlayerIndex);
+        console.log('nextActivePlayer0', nextActivePlayer);
+        
+        
+        // if ((allPlayerActionEqual || (allActionAmountsEqual) ) && allPlayersActed && allPlayersActedCurrentRound && !hand.is_changed_current_round) {
+    
+        //   console.log('All active players have equal action_amount!');
+        //   const isAllPlayerActionAllIn = activeNotFoldedPlayers.every((element) => element.action === PlayerAction.AllIn);
+        //   console.log('isAllPlayerActionAllIn', isAllPlayerActionAllIn);
+
+        //   const currentRound = isAllPlayerActionAllIn ? Round.River : hand.current_round;
+        //   console.log('currentRound', currentRound);
+
+        //   const nextRoundMap = {
+        //     [Round.Preflop]: Round.Flop,
+        //     [Round.Flop]: Round.Turn,
+        //     [Round.Turn]: Round.River,
+        //     [Round.River]: Round.Showdown,
+        //     [Round.Showdown]: Round.Showdown,
+        //   };
+      
+        //   const nextRound = nextRoundMap[currentRound];
+        //   console.log('nextRound', nextRound);
+
+        //   if (nextRound && nextRound !== currentRound) {
+        //     await Promise.all([
+        //       this.repository.updateActiveNotFoldAndNotAllInPlayersByGameId(
+        //         gameId,
+        //         {
+        //           action: PlayerAction.Active,
+        //           action_amount: 0,
+        //         }
+        //       ),
+        //       this.repository.updateHand(handId, { current_round: nextRound, is_changed_current_round: true })
+        //     ]);
+        //     console.log(`Moved to next round: ${nextRound}`);
+        //   } else {
+        //     console.log('Already at the last round: Showdown');
+        //   }
+        
+          
+        //   const activePlayers = await this.repository.getPlayers(gameId);
+    
+        //   const bigBlindPlayerIndex = activePlayers.findIndex(p => p.id === hand.dealer);
+    
+        //   if (bigBlindPlayerIndex === -1) {
+        //     console.error('Big blind player not found!');
+        //     return;
+        //   }
+    
+        //   let nextIndex = (bigBlindPlayerIndex + 1) % activePlayers.length;
+        //   let attempts = 0;
+        //   while (attempts < activePlayers.length) {
+        //     const player = activePlayers[nextIndex];
+      
+        //     if (player.is_active && player.action !== PlayerAction.Fold) {
+        //       nextActivePlayer = player;
+        //       break;
+        //     }
+      
+        //     nextIndex = (nextIndex + 1) % activePlayers.length;
+        //     attempts++;
+        //   }
+        // } else {
+
+        //   let nextIndex = (foldingPlayerIndex + 1) % activePlayers.length;
+        //   let attempts = 0;
+        //   while (!nextActivePlayer && attempts < activePlayers.length) {
+        //     const player = activePlayers[nextIndex];
+        //     if (player.is_active && player.action !== PlayerAction.Fold) {
+        //       nextActivePlayer = player;
+        //     } else {
+        //       nextIndex = (nextIndex + 1) % activePlayers.length;
+        //       attempts++;
+        //     }
+        //   }
+        // }
+
+        if (nextActivePlayer) {
+          await this.repository.updateHand(handId, { current_player_turn_id: nextActivePlayer.id, is_changed_current_round: false });
+        } else {
+          console.log('Ձեռքն ավարտվեց, մնաց միայն մեկ ակտիվ խաղացող');
+        }
+      }
+    }
+  }
+
+  getNextActivePlayer(
+    activePlayers: Player[],
+    currentPlayerIndex: number,
+  ): Player | null {
+
+    let nextActivePlayer: Player | null = null;
+    let nextIndex = currentPlayerIndex % activePlayers.length;
+    let attempts = 0;
+    while (!nextActivePlayer && attempts < activePlayers.length) {
+      const player = activePlayers[nextIndex];
+      if (player.is_active && player.action !== PlayerAction.Fold) {
+        nextActivePlayer = player;
+      } else {
+        nextIndex = (nextIndex + 1) % activePlayers.length;
+        attempts++;
+      }
+    }
+
+    return nextActivePlayer;
+  }
+
+
+  async nextPlayer2(
     gameId: UUID,
     handId: UUID,
     playerId: UUID,

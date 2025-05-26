@@ -159,6 +159,7 @@ export interface IRepository {
     round: string,
     bettingRound: number,
     actionOrder: number,
+    actionOrderCurrentLoop: number,
     actionType: string,
     betAmount?: number | null,
     client?: PoolClient | Pool

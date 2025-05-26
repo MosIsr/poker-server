@@ -496,6 +496,7 @@ export default class Repository
     round: string,
     bettingRound: number,
     actionOrder: number,
+    actionOrderCurrentLoop: number,
     actionType: string,
     betAmount?: number | null,
     client?: PoolClient | Pool
@@ -503,9 +504,9 @@ export default class Repository
     const queryClient = client ?? this.pool;
     const result = await queryClient.query(
       `INSERT INTO actions (
-        id, hand_id, player_id, round, betting_round, action_order, action_type, bet_amount
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-      [randomUUID(), handId, playerId, round, bettingRound, actionOrder, actionType, betAmount]
+        id, hand_id, player_id, round, betting_round, action_order, action_order_current_loop, action_type, bet_amount
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      [randomUUID(), handId, playerId, round, bettingRound, actionOrder, actionOrderCurrentLoop, actionType, betAmount]
     );
 
     return result.rows.length ? result.rows[0] : null;

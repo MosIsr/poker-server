@@ -37,6 +37,10 @@ exports.up = async (pgm) => {
       type: 'numeric',
       notNull: true,
     },
+    action_order_current_loop: {
+      type: 'numeric',
+      notNull: true,
+    },
     action_type: {
       type: 'text',
     },
