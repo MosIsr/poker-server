@@ -12,5 +12,6 @@ export default interface Player {
   action: PlayerAction;
   action_amount: number;
   all_bet_sum: number;
+  inactive_time_hand_id: UUID | null;
   created_at: DateTime;
 }

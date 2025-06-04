@@ -28,6 +28,10 @@ export interface IRepository {
     client?: PoolClient | Pool
   ): Promise<Game | null>;
 
+  getLastActiveGame(
+    client?: PoolClient | Pool
+  ): Promise<Game | null>;
+
   updateGame(
     id: UUID,
     updateData: Partial<Game>,
@@ -159,6 +163,7 @@ export interface IRepository {
     round: string,
     bettingRound: number,
     actionOrder: number,
+    actionOrderCurrentLoop: number,
     actionType: string,
     betAmount?: number | null,
     client?: PoolClient | Pool
@@ -191,6 +196,13 @@ export interface IRepository {
   ): Promise<Action[]>;
 
   hasAllActionTypes(
+    handId: UUID,
+    round: Round,
+    actionTypes: PlayerAction[],
+    client?: PoolClient | Pool
+  ): Promise<boolean>;
+
+  hasAtLeastOneActionType(
     handId: UUID,
     round: Round,
     actionTypes: PlayerAction[],

@@ -18,6 +18,20 @@ export function setupSocketIO(io: Server) {
       socket.emit('pong-client', { message: 'pong from server' });
     });
 
+    socket.on('get-active-game', async () => {
+      console.log('get-active-game');
+      const response = await gameService.getActiveGame();
+      
+      socket.emit('game-data', response);
+    });
+    
+    socket.on('end-game', async (data) => {
+      console.log('end-game');
+      const response = await gameService.endGame(data.gameId);
+      
+      socket.emit('end-game-response', response);
+    });
+
 
 
     socket.on('start-game', async ({ blindTime, playersChips }: { blindTime:number, playersChips: number }) => {
@@ -70,9 +84,20 @@ export function setupSocketIO(io: Server) {
         data.gameId,
         data.handId,
         data.winners,
-        data.gameLevel
+        data.gameLevel,
+        data.reBuyPlayers,
       );
       socket.emit('game-data', response);
-    })
+    });
+
+    socket.on('player-re-buy', async (data) => {
+      const response = await gameService.handlePlayerReBuy(
+        data.gameId,
+        data.handId,
+        data.playerId
+      );
+      socket.emit('game-data', response);
+    });
+
   });
 }
