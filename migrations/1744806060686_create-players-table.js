@@ -55,6 +55,10 @@ exports.up = (pgm) => {
       notNull: true,
       default: 0,
     },
+    inactive_time_hand_id: {
+      type: 'uuid',
+      notNull: false,
+    },
     created_at: {
       type: 'timestamp',
       notNull: true,

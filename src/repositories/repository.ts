@@ -96,6 +96,18 @@ export default class Repository
     return result.rows.length ? result.rows[0] : null;
   }
 
+  async getLastActiveGame(
+    client?: PoolClient | Pool
+  ): Promise<Game | null> {
+    const queryClient = client ?? this.pool;
+    const result = await queryClient.query(
+      'SELECT * FROM games WHERE end_time IS NULL'
+    );
+    console.log('result', result);
+    
+    return result.rows.length ? result.rows[0] : null;
+  }
+
   async updateGame(
     id: UUID,
     updateData: Partial<Game>,
@@ -603,10 +615,41 @@ export default class Repository
     `;
   
     const values = [handId, round, ...actionTypes, actionTypes.length];
+
+    console.log('placeholders', placeholders);
+    console.log('values', values);
     const result = await queryClient.query(sql, values);
-  
+    console.log('result.rows', result.rows);
+    
     return result.rows[0]?.has_all ?? false;
   }
+
+  async hasAtLeastOneActionType(
+    handId: UUID,
+    round: Round,
+    actionTypes: PlayerAction[],
+    client?: PoolClient | Pool
+  ): Promise<boolean> {
+    if (actionTypes.length === 0) return false;
+  
+    const queryClient = client ?? this.pool;
+  
+    const placeholders = actionTypes.map((_, idx) => `$${idx + 3}`).join(', ');
+    const sql = `
+      SELECT 1
+      FROM actions
+      WHERE hand_id = $1
+        AND round = $2
+        AND action_type IN (${placeholders})
+      LIMIT 1
+    `;
+  
+    const values = [handId, round, ...actionTypes];
+    const result = await queryClient.query(sql, values);
+  
+    return result.rows.length > 0;
+  }
+  
 
   async getActionsByHandIdAndPlayerIdAndRound(
     handId: UUID,

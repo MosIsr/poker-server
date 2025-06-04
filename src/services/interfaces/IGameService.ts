@@ -5,6 +5,19 @@ import ActionsOpportunities from 'src/interfaces/actions-opportunities';
 
 export default interface IGameService {
   startGame(blindTime:number, smallBlind: number): Promise<any>;
+  
+  endGame(
+    gameId: UUID,
+  ): Promise<{isEndedGame: boolean}>;
+
+  getActiveGame(): Promise<{
+    players: Player[];
+    hand: Hand;
+    level: number;
+    blindTime: number;
+    playerActions: ActionsOpportunities;
+  } | null>;
+
   performAction(
     gameId: UUID,
     handId: UUID,
@@ -24,6 +37,7 @@ export default interface IGameService {
     handId: UUID,
     winners: Array<{id: UUID, amount: number}>,
     gameLevel: number,
+    reBuyPlayers: UUID[],
   ): Promise<{
     players: Player[];
     hand: Hand;
@@ -35,5 +49,18 @@ export default interface IGameService {
     gameId: UUID,
     handId: UUID,
   ): Promise<ActionsOpportunities>;
+
+  handlePlayerReBuy(
+    gameId: UUID,
+    handId: UUID,
+    playerId: UUID,
+  ): Promise<{
+    players: Player[];
+    hand: Hand;
+    level: number;
+    blindTime: number;
+    playerActions: ActionsOpportunities;
+  }>;
+
 }
 
