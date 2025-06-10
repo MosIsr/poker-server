@@ -103,7 +103,7 @@ export default class Repository
     const result = await queryClient.query(
       'SELECT * FROM games WHERE end_time IS NULL'
     );
-    console.log('result', result);
+    console.log('result', result.rows);
     
     return result.rows.length ? result.rows[0] : null;
   }

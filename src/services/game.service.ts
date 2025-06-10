@@ -508,8 +508,13 @@ export default class GameService implements IGameService {
         `Խաղացողը ${hand.current_player_turn_id} համարով գոյություն չունի`
       );
     }
+    console.log('turnPlayer', turnPlayer);
+    console.log('turnPlayerBetAmounts0', turnPlayerBetAmounts);
+    
 
     const mustBeBet = hand.current_max_bet - turnPlayerBetAmounts;
+    console.log('mustBeBet', mustBeBet);
+    console.log('turnPlayer.amount', turnPlayer.amount);
 
     let callAmount = +mustBeBet;
     let action = PlayerAction.Call;
@@ -517,9 +522,12 @@ export default class GameService implements IGameService {
       callAmount = +turnPlayer.amount;
       action = PlayerAction.AllIn;
     }
+    console.log('callAmount', callAmount);
 
     const player = await this.repository.getPlayerById(playerId);
     if (player) {
+      console.log('+player.all_bet_sum + +callAmount,', +player.all_bet_sum + +callAmount);
+      
       await Promise.all([
         this.repository.updateHandPot(hand.id, +hand.pot_amount + callAmount),
         this.repository.updatePlayer(playerId, {
@@ -613,7 +621,16 @@ export default class GameService implements IGameService {
     console.log("************** START ALL IN **************");
     let betAmount = 0;
 
-    const [playerAllBet, player] = await Promise.all([
+    const [
+      currentRoundPlayerBetAmounts,
+      playerAllBet,
+      player
+    ] = await Promise.all([
+      this.repository.getActionsBetAmountsByHandIdAndPlayerIdAndRound(
+        hand.id,
+        playerId,
+        hand.current_round
+      ),
       this.repository.getActionsBetAmountsByHandIdAndPlayerId(
         hand.id,
         playerId
@@ -622,8 +639,13 @@ export default class GameService implements IGameService {
     ]);
 
     if (player) {
-      betAmount = +player.amount;
+      console.log('currentRoundPlayerBetAmounts', currentRoundPlayerBetAmounts);
+      betAmount = +player.amount + +currentRoundPlayerBetAmounts;
+      
       let currentMaxBet = hand.current_max_bet;
+      console.log('currentMaxBet', currentMaxBet);
+      console.log('playerAllBet', playerAllBet);
+      console.log('player.amount', player.amount);
       if (currentMaxBet < +player.amount + +playerAllBet) {
         currentMaxBet = +player.amount + +playerAllBet;
       }
@@ -3061,9 +3083,12 @@ export default class GameService implements IGameService {
 
     let bigBlindId: UUID | undefined;
     for (let i = 1; i <= players.length; i++) {
-      const index =
-        (players.findIndex((p) => smallBlindId ? p.id === smallBlindId : p.id === nextDealerId) + 1 + i) %
-        players.length;
+      let index = 0;
+      if(!smallBlindId) {
+        index = ((players.findIndex((p) => p.id === nextDealerId) + 1) + i) % players.length;
+      } else {
+        index = ((players.findIndex((p) => p.id === smallBlindId)) + i) % players.length;
+      }
       if (players[index].is_active) {
         bigBlindId = players[index].id;
         break;
