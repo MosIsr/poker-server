@@ -93,8 +93,22 @@ exports.up = async (pgm) => {
     },
   });
 
-  await pgm.addConstraint('hands', 'unique_roles_per_hand', {
-    check: `dealer <> small_blind AND dealer <> big_blind AND small_blind <> big_blind`,
+  await pgm.addConstraint('hands', 'valid_roles_based_on_player_count', {
+    check: `
+      (
+        player_count = 2 AND
+        dealer = small_blind AND
+        dealer <> big_blind AND
+        small_blind <> big_blind
+      )
+      OR
+      (
+        player_count > 2 AND
+        dealer <> small_blind AND
+        dealer <> big_blind AND
+        small_blind <> big_blind
+      )
+    `,
   });
 };
 
