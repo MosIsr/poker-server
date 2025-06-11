@@ -2260,6 +2260,15 @@ export default class GameService implements IGameService {
     actingPlayerId: UUID
   ): Promise<void> {
     console.log("=========== START CHIP CAPPING 3 ============");
+    // 1. պետք է գտնել հաջորդ խաղացողին, որին հնարավոր է գումար վերադարձնե
+    // 2. պետք է հասկանալ արդյոք նախորդ անգամ խաղացողը All-in է արել թե ոչ
+    // 3. պետք է ատանանք բոլոր խաղացողների bet֊երը
+    // 4. վերցնենք ամենամաեծ bet արածին
+    // 5. ստուգենք կա արդյոք իրեն հավասար bet արած այլ խաղացող
+    // 6. եթե կա իրեն հավասար bet արած խաղացող, ոչինչ չենք անում
+    // 7. եթե չկա, ապա գտնում ենք մնացած խաղացողների ամենամեծ bet արածի amount֊ը
+    // 8. ամբողջ խաղացողների ամենամեծ bet արածին վերադարձնում ենք այդ երկու ամենամեծ bet֊երի տարբերությունը
+    // 9. թարմացնում ենք pot-ը, current_max_bet֊ը և խաղացողի վերջին action-ի amount֊ը
 
     // 1. Get game state
     const [hand, players] = await Promise.all([
@@ -2307,15 +2316,23 @@ export default class GameService implements IGameService {
     }
 
     // 4. For each all-in player, calculate their effective all-in amount
+    console.log('allInPlayers', allInPlayers);
+    
     const effectiveAllIns = allInPlayers.map((player) => {
+      console.log('player', player);
+      
       const totalInvested = +player.playerData.all_bet_sum;
       const currentRoundInvested = +player.betAmount;
+      console.log('totalInvested', totalInvested);
+      console.log('currentRoundInvested', currentRoundInvested);
+      const effectiveAllIn = +Math.min(
+        totalInvested,
+        currentRoundInvested + +player.playerData.amount
+      );
+      console.log('effectiveAllIn', effectiveAllIn);
       return {
         ...player,
-        effectiveAllIn: +Math.min(
-          totalInvested,
-          currentRoundInvested + +player.playerData.amount
-        ),
+        effectiveAllIn,
       };
     });
 
