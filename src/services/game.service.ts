@@ -210,13 +210,25 @@ export default class GameService implements IGameService {
       throw new Error(`Ձեռքը ${handId} համարով գոյություն չունի`);
     }
 
+    const turnPlayer = await this.repository.getPlayerById(hand.current_player_turn_id);
+    if (!turnPlayer) {
+      throw new Error(
+        `Խաղացողը ${hand.current_player_turn_id} համարով գոյություն չունի`
+      );
+    }
+    const gameBlind = await this.repository.getGameBlindByLevel(game.level);
+    if (!gameBlind) {
+      throw new Error(
+        `Խաղի տեղեկությունը ${game.level} համար գոյություն չունի`
+      );
+    }
+
     const currentRound = hand.current_round;
 
-    const [
+    let [
       isCurrentRoundHaveBet,
       isCurrentRoundHaveAllIn,
       isCurrentRoundHaveRaise,
-      turnPlayer
     ] = await Promise.all([
       this.repository.hasAllActionTypes(handId, currentRound, [
         PlayerAction.Bet,
@@ -227,18 +239,16 @@ export default class GameService implements IGameService {
       this.repository.hasAllActionTypes(handId, currentRound, [
         PlayerAction.Raise,
       ]),
-      this.repository.getPlayerById(hand.current_player_turn_id),
     ]);
 
-    const isCurrentRoundHaveBetOrAllIn = await this.repository.hasAtLeastOneActionType(handId, currentRound, [
+    let isCurrentRoundHaveBetOrAllIn = await this.repository.hasAtLeastOneActionType(handId, currentRound, [
       PlayerAction.Bet,
       PlayerAction.AllIn,
-    ])
+    ]);
 
-    if (!turnPlayer) {
-      throw new Error(
-        `Խաղացողը ${hand.current_player_turn_id} համարով գոյություն չունի`
-      );
+    if(hand.current_round === Round.Preflop && !hand.small_blind) {
+      isCurrentRoundHaveBet = true;
+      isCurrentRoundHaveBetOrAllIn = true;
     }
     
     const isCanFold = isCurrentRoundHaveBetOrAllIn;
@@ -250,16 +260,8 @@ export default class GameService implements IGameService {
 
     const isCanReRaise = (isCurrentRoundHaveBet || isCurrentRoundHaveAllIn) && isCurrentRoundHaveRaise && turnPlayer.amount > raiseMinAmount ? true : false;
 
-    const gameBlind = await this.repository.getGameBlindByLevel(game.level);
-    if (!gameBlind) {
-      throw new Error(
-        `Խաղի տեղեկությունը ${game.level} համար գոյություն չունի`
-      );
-    }
+  
     let betMinAmount = +gameBlind.big_blind_amount;
-    if (currentRound === Round.Preflop) {
-      betMinAmount = +gameBlind.small_blind_amount;
-    }
 
     const actions: ActionsOpportunities = {
       isCanFold, // եթե կա bet կամ all-in ապա true, հակառակ դեպքում false,
@@ -508,13 +510,8 @@ export default class GameService implements IGameService {
         `Խաղացողը ${hand.current_player_turn_id} համարով գոյություն չունի`
       );
     }
-    console.log('turnPlayer', turnPlayer);
-    console.log('turnPlayerBetAmounts0', turnPlayerBetAmounts);
-    
 
     const mustBeBet = hand.current_max_bet - turnPlayerBetAmounts;
-    console.log('mustBeBet', mustBeBet);
-    console.log('turnPlayer.amount', turnPlayer.amount);
 
     let callAmount = +mustBeBet;
     let action = PlayerAction.Call;
@@ -522,8 +519,6 @@ export default class GameService implements IGameService {
       callAmount = +turnPlayer.amount;
       action = PlayerAction.AllIn;
     }
-    console.log('callAmount', callAmount);
-
     const player = await this.repository.getPlayerById(playerId);
     if (player) {
       console.log('+player.all_bet_sum + +callAmount,', +player.all_bet_sum + +callAmount);
@@ -639,13 +634,8 @@ export default class GameService implements IGameService {
     ]);
 
     if (player) {
-      console.log('currentRoundPlayerBetAmounts', currentRoundPlayerBetAmounts);
       betAmount = +player.amount + +currentRoundPlayerBetAmounts;
-      
       let currentMaxBet = hand.current_max_bet;
-      console.log('currentMaxBet', currentMaxBet);
-      console.log('playerAllBet', playerAllBet);
-      console.log('player.amount', player.amount);
       if (currentMaxBet < +player.amount + +playerAllBet) {
         currentMaxBet = +player.amount + +playerAllBet;
       }
@@ -655,10 +645,10 @@ export default class GameService implements IGameService {
           amount: 0,
           action: PlayerAction.AllIn,
           action_amount: +betAmount,
-          all_bet_sum: +player.all_bet_sum,
+          all_bet_sum: +player.all_bet_sum + +player.amount,
         }),
         this.repository.updateHand(hand.id, {
-          pot_amount: +hand.pot_amount + +betAmount,
+          pot_amount: +hand.pot_amount + +player.amount,
           last_raise_amount: currentMaxBet,
           current_max_bet: currentMaxBet,
         }),
@@ -677,7 +667,7 @@ export default class GameService implements IGameService {
       actionOrder,
       actionOrderCurrentLoop,
       PlayerAction.AllIn,
-      betAmount
+      betAmount - +currentRoundPlayerBetAmounts
     );
     await this.nextPlayer(gameId, hand.id, playerId);
 
@@ -745,7 +735,12 @@ export default class GameService implements IGameService {
     handId: UUID,
     actingPlayerId: UUID
   ): Promise<void> {
-    console.log("=========== START CHIP CAPPING 3 ============");
+    console.log('');
+    console.log('');
+    console.log("=========== START CHIP CAPPING ============");
+    console.log('');
+    console.log('');
+    
     // 1. պետք է գտնել հաջորդ խաղացողին, որին հնարավոր է գումար վերադարձնե
     // 2. պետք է հասկանալ արդյոք նախորդ անգամ խաղացողը All-in է արել թե ոչ
     // 3. պետք է ատանանք բոլոր խաղացողների bet֊երը
@@ -802,20 +797,13 @@ export default class GameService implements IGameService {
     }
 
     // 4. For each all-in player, calculate their effective all-in amount
-    console.log('allInPlayers', allInPlayers);
-    
     const effectiveAllIns = allInPlayers.map((player) => {
-      console.log('player', player);
-      
-      const totalInvested = +player.playerData.all_bet_sum;
+      const totalInvested = +player.playerData.action_amount;
       const currentRoundInvested = +player.betAmount;
-      console.log('totalInvested', totalInvested);
-      console.log('currentRoundInvested', currentRoundInvested);
-      const effectiveAllIn = +Math.min(
+      const effectiveAllIn = +Math.max(
         totalInvested,
         currentRoundInvested + +player.playerData.amount
       );
-      console.log('effectiveAllIn', effectiveAllIn);
       return {
         ...player,
         effectiveAllIn,
@@ -824,7 +812,6 @@ export default class GameService implements IGameService {
 
     // 5. Sort by effective all-in amount (descending)
     effectiveAllIns.sort((a, b) => +b.effectiveAllIn - +a.effectiveAllIn);
-    console.log("effectiveAllIns", effectiveAllIns);
 
     // 6. Find the highest and second highest effective all-ins
     const highestAllIn = effectiveAllIns[0];
@@ -838,9 +825,7 @@ export default class GameService implements IGameService {
     );
 
     // 7. Calculate refund amount
-    const refundAmount =
-      +highestAllIn.effectiveAllIn - +secondHighestAllIn.effectiveAllIn;
-    console.log("refundAmount", refundAmount);
+    const refundAmount = +highestAllIn.effectiveAllIn - +secondHighestAllIn.effectiveAllIn;
 
     if (refundAmount <= 0) {
       console.log(
@@ -875,19 +860,6 @@ export default class GameService implements IGameService {
       last_raise_amount: 0,
     });
 
-    // Update the player's last action amount
-    // const lastAction = await this.repository.getLastActionForPlayerInRound(
-    //   handId,
-    //   highestAllIn.playerId,
-    //   hand.current_round
-    // );
-
-    // if (lastAction) {
-    //   await this.repository.updateAction(lastAction.id, {
-    //     amount: secondHighestAllIn.effectiveAllIn.toString()
-    //   });
-    // }
-
     // Check if we should end the hand (only one non-all-in player left)
     const nonAllInPlayers = activePlayers.filter(
       (p) => p.action !== PlayerAction.AllIn || +p.amount > 0
@@ -900,7 +872,75 @@ export default class GameService implements IGameService {
       });
     }
 
-    console.log("=========== END CHIP CAPPING 3 ============");
+    console.log("=========== END CHIP CAPPING ============");
+  }
+
+  async handleChipCapping3(
+    gameId: UUID,
+    handId: UUID,
+    actingPlayerId: UUID
+  ): Promise<void> {
+    console.log('');
+    console.log('');
+    console.log("=========== START CHIP CAPPING ============");
+    console.log('');
+    console.log('');
+    
+    // 1. պետք է գտնել հաջորդ խաղացողին, որին հնարավոր է գումար վերադարձնե
+    // 2. պետք է հասկանալ արդյոք նախորդ անգամ խաղացողը All-in է արել թե ոչ
+    // 3. պետք է ատանանք բոլոր խաղացողների bet֊երը
+    // 4. վերցնենք ամենամաեծ bet արածին
+    // 5. ստուգենք կա արդյոք իրեն հավասար bet արած այլ խաղացող
+    // 6. եթե կա իրեն հավասար bet արած խաղացող, ոչինչ չենք անում
+    // 7. եթե չկա, ապա գտնում ենք մնացած խաղացողների ամենամեծ bet արածի amount֊ը
+    // 8. ամբողջ խաղացողների ամենամեծ bet արածին վերադարձնում ենք այդ երկու ամենամեծ bet֊երի տարբերությունը
+    // 9. թարմացնում ենք pot-ը, current_max_bet֊ը և խաղացողի վերջին action-ի amount֊ը
+
+    // 1. Get game state
+    const [hand, players] = await Promise.all([
+      this.repository.getHandById(handId),
+      this.repository.getPlayers(gameId),
+    ]);
+
+    if (!hand || !players) {
+      throw new Error("Hand or players not found");
+    }
+
+    const activePlayers = players.filter(
+      (p) => p.is_active && p.action !== PlayerAction.Fold
+    );
+
+    console.log('activePlayers', activePlayers);
+
+    const currentPlayerIndex = players.findIndex((p) => p.id === actingPlayerId);
+    console.log("currentPlayerIndex", currentPlayerIndex);
+    
+    const nextPlayerIndex = this.getNextPlayerIndex(currentPlayerIndex, players);
+    if(!nextPlayerIndex) {
+      return;
+    }
+    const nextPlayer = players[nextPlayerIndex];
+    console.log("nextPlayer", nextPlayer);
+
+    if(nextPlayer.action !== PlayerAction.AllIn) {
+      return;
+    }
+
+    const activePlayersBetsCurrentRound = await Promise.all(
+      activePlayers.map((player) => {
+        return this.repository.getActionsBetAmountsByHandIdAndPlayerIdAndRound(
+          handId,
+          player.id,
+          hand.current_round
+        );
+      })
+    );
+    console.log("activePlayersBetsCurrentRound", activePlayersBetsCurrentRound);
+
+
+
+
+    console.log("=========== END CHIP CAPPING ============");
   }
 
   async nextPlayer(gameId: UUID, handId: UUID, playerId: UUID): Promise<void> {
@@ -1318,6 +1358,7 @@ export default class GameService implements IGameService {
     await this.repository.updatePlayersByGameId(gameId, {
       action: PlayerAction.Active,
       action_amount: 0,
+      all_bet_sum: 0
     });
 
     if (hand.small_blind) {

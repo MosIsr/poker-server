@@ -615,11 +615,7 @@ export default class Repository
     `;
   
     const values = [handId, round, ...actionTypes, actionTypes.length];
-
-    console.log('placeholders', placeholders);
-    console.log('values', values);
     const result = await queryClient.query(sql, values);
-    console.log('result.rows', result.rows);
     
     return result.rows[0]?.has_all ?? false;
   }
