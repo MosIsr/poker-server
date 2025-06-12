@@ -764,7 +764,9 @@ export default class GameService implements IGameService {
     const activePlayers = players.filter(
       (p) => p.is_active && p.action !== PlayerAction.Fold
     );
-
+    if(activePlayers.length < 2 ) {
+      return;
+    }
     // 2. Get all players' bets in current round
     const playerBets = await Promise.all(
       activePlayers.map(async (player) => ({
