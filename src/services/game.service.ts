@@ -787,20 +787,20 @@ export default class GameService implements IGameService {
     console.log("Player bets in current round:", playerBets);
 
     // 3. Find all all-in players (including partial all-ins)
-    const allInPlayers = playerBets.filter(
-      (p) => p.playerData.action === PlayerAction.AllIn
-    );
+    // const allInPlayers = playerBets.filter(
+    //   (p) => p.playerData.action === PlayerAction.AllIn
+    // );
 
-    if (allInPlayers.length < 2) {
-      console.log("Not enough all-in players for capping check");
-      return;
-    }
+    // if (allInPlayers.length < 2) {
+    //   console.log("Not enough all-in players for capping check");
+    //   return;
+    // }
 
     // 4. For each all-in player, calculate their effective all-in amount
-    const effectiveAllIns = allInPlayers.map((player) => {
+    const effectiveAllIns = playerBets.map((player) => {
       const totalInvested = +player.playerData.action_amount;
       const currentRoundInvested = +player.betAmount;
-      const effectiveAllIn = +Math.max(
+      const effectiveAllIn = +Math.min(
         totalInvested,
         currentRoundInvested + +player.playerData.amount
       );
