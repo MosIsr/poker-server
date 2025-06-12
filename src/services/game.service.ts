@@ -988,8 +988,7 @@ export default class GameService implements IGameService {
     console.log('activeNotFoldedPlayers[activeNotFoldedPlayers.length - 1].id', activeNotFoldedPlayers[activeNotFoldedPlayers.length - 1]?.id);
     console.log('========================================================');
     
-    if (activeNotFoldedNotAllInPlayers.length === 1 && activeNotFoldedNotAllInPlayers[0].id === activeNotFoldedPlayers[activeNotFoldedPlayers.length - 1].id) {
-      //todo
+    if (activeNotFoldedNotAllInPlayers.length === 1 && activeNotFoldedNotAllInPlayers[0].id === activeNotFoldedPlayers[activeNotFoldedPlayers.length - 1].id && activeNotFoldedNotAllInPlayers[0].action !== PlayerAction.Active) {
       await this.handleChipCapping(gameId, handId, playerId);
       await this.repository.updateHand(handId, {
         current_round: Round.Showdown,
