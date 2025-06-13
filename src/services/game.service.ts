@@ -993,14 +993,14 @@ export default class GameService implements IGameService {
       );
 
       const maxBetCurrentRound = Math.max(...allInPlayersBetAmounts);
-      
+
       const activeNotFoldedNotAllInPlayerBetAmount = await this.repository.getActionsBetAmountsByHandIdAndPlayerIdAndRound(
         handId,
         activeNotFoldedNotAllInPlayers[0].id,
         hand.current_round
       );
 
-      if(activeNotFoldedNotAllInPlayerBetAmount > maxBetCurrentRound) {
+      if(activeNotFoldedNotAllInPlayerBetAmount >= maxBetCurrentRound) {
         await this.handleChipCapping(gameId, handId, playerId);
         await this.repository.updateHand(handId, {
           current_round: Round.Showdown,
