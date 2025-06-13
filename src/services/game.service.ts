@@ -959,15 +959,10 @@ export default class GameService implements IGameService {
     }
 
     const players = await this.repository.getPlayers(gameId);
-    // console.log("players", players);
-
     const foldingPlayerIndex = players.findIndex((p) => p.id === playerId);
-    console.log("foldingPlayerIndex", foldingPlayerIndex);
-
     const activeNotFoldedPlayers = players.filter(
       (p) => p.is_active && p.action !== PlayerAction.Fold
     );
-    console.log("activeNotFoldedPlayers", activeNotFoldedPlayers);
 
     if (activeNotFoldedPlayers.length < 2) {
       //todo
@@ -981,19 +976,37 @@ export default class GameService implements IGameService {
     const activeNotFoldedNotAllInPlayers = activeNotFoldedPlayers.filter(
       (player) => player.action !== PlayerAction.AllIn
     );
-    console.log('========================================================');
-    console.log('========================================================');
-    console.log('activeNotFoldedNotAllInPlayers', activeNotFoldedNotAllInPlayers);
-    console.log('activeNotFoldedNotAllInPlayers[0].id', activeNotFoldedNotAllInPlayers[0]?.id);
-    console.log('activeNotFoldedPlayers[activeNotFoldedPlayers.length - 1].id', activeNotFoldedPlayers[activeNotFoldedPlayers.length - 1]?.id);
-    console.log('========================================================');
+
+    const activeAllInPlayers = activeNotFoldedPlayers.filter(
+      (player) => player.action == PlayerAction.AllIn
+    );
     
-    if (activeNotFoldedNotAllInPlayers.length === 1 && activeNotFoldedNotAllInPlayers[0].id === activeNotFoldedPlayers[activeNotFoldedPlayers.length - 1].id && activeNotFoldedNotAllInPlayers[0].action !== PlayerAction.Active) {
-      await this.handleChipCapping(gameId, handId, playerId);
-      await this.repository.updateHand(handId, {
-        current_round: Round.Showdown,
-      });
-      return;
+    if (activeNotFoldedNotAllInPlayers.length === 1) {
+      const allInPlayersBetAmounts = await Promise.all(
+        activeAllInPlayers.map((player) => {
+          return this.repository.getActionsBetAmountsByHandIdAndPlayerIdAndRound(
+            handId,
+            player.id,
+            hand.current_round
+          );
+        })
+      );
+
+      const maxBetCurrentRound = Math.max(...allInPlayersBetAmounts);
+      
+      const activeNotFoldedNotAllInPlayerBetAmount = await this.repository.getActionsBetAmountsByHandIdAndPlayerIdAndRound(
+        handId,
+        activeNotFoldedNotAllInPlayers[0].id,
+        hand.current_round
+      );
+
+      if(activeNotFoldedNotAllInPlayerBetAmount > maxBetCurrentRound) {
+        await this.handleChipCapping(gameId, handId, playerId);
+        await this.repository.updateHand(handId, {
+          current_round: Round.Showdown,
+        });
+        return;
+      }
     }
 
     const playerThatShouldActNextId = hand.current_player_turn_id;
@@ -1004,12 +1017,9 @@ export default class GameService implements IGameService {
         hand.current_round
       );
 
-    console.log('actionsOfThisPlayerThisRound', actionsOfThisPlayerThisRound);
-    
     const lastActionOfThisPlayer = actionsOfThisPlayerThisRound.sort(
       (a, b) => b.action_order - a.action_order
     )[0];
-    console.log("lastActionOfThisPlayer", lastActionOfThisPlayer);
 
 
     const playersCurrentRoundActions = await Promise.all(
