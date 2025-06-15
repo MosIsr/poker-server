@@ -81,22 +81,23 @@ export default class GameService implements IGameService {
         throw new DomainError(" Game Blind not found");
       }
 
-      const smallBlindAmount = +gameBlind.small_blind_amount;
-      const bigBlindAmount = +gameBlind.big_blind_amount;
-      const ante = +gameBlind.ante;
+      let smallBlindAmount = +gameBlind.small_blind_amount;
+      let bigBlindAmount = +gameBlind.big_blind_amount;
+      let ante = +gameBlind.ante;      
 
       for (const [index, player] of Players.entries()) {
         let action = PlayerAction.Active;
         let actionAmount = 0;
         let amount = playersChips;
 
-        if (index === 1) {
-          action = PlayerAction.Bet;
-        } else if (index === 2) {
-          action = PlayerAction.Raise;
-          amount = playersChips - ante;
+        if (index === 2) {
+          if(ante > playersChips) {
+            amount = 0;
+            ante = playersChips;
+          } else {
+            amount = playersChips - ante;
+          }
         }
-
         await this.repository.createPlayer(
           game.id,
           player.name,
@@ -116,6 +117,22 @@ export default class GameService implements IGameService {
       const bigBlindId = players[2].id;
       const currentPlayerTurnId = players[3].id;
 
+      let smallBlindAction = PlayerAction.Bet;
+      let bigBlindAction = PlayerAction.Raise;
+
+      if (smallBlindAmount >= +players[1].amount) {
+        smallBlindAction = PlayerAction.AllIn;
+        smallBlindAmount = +players[1].amount
+      }
+
+      if (bigBlindAmount >= +players[2].amount - ante) {
+        bigBlindAction = PlayerAction.AllIn;
+        bigBlindAmount = +players[2].amount - ante
+      } else {
+        bigBlindAction = PlayerAction.Raise;
+        bigBlindAmount = +players[2].amount - ante;
+      }
+
       const hand = await this.repository.createHand(
         game.id,
         handLevel,
@@ -124,8 +141,8 @@ export default class GameService implements IGameService {
         bigBlindId,
         0,
         ante,
-        smallBlindAmount,
-        bigBlindAmount,
+        gameBlind.small_blind_amount,
+        gameBlind.big_blind_amount,
         0,
         0,
         0,
@@ -138,14 +155,14 @@ export default class GameService implements IGameService {
         game.id,
         hand.id,
         smallBlindId,
-        PlayerAction.Bet,
+        smallBlindAction,
         smallBlindAmount
       );
       await this.performAction(
         game.id,
         hand.id,
         bigBlindId,
-        PlayerAction.Raise,
+        bigBlindAction,
         bigBlindAmount
       );
 
@@ -254,14 +271,13 @@ export default class GameService implements IGameService {
     const isCanFold = isCurrentRoundHaveBetOrAllIn;
     const isCanCall = isCurrentRoundHaveBetOrAllIn;
     const isCanCheck = !isCurrentRoundHaveBetOrAllIn;
-    const isCanBet = !isCurrentRoundHaveBetOrAllIn;
+    const isCanBet = +turnPlayer.amount > +gameBlind.big_blind_amount ? !isCurrentRoundHaveBetOrAllIn : false;
     const raiseMinAmount = +hand.current_max_bet * 2;
-    const isCanRaise = isCurrentRoundHaveBetOrAllIn ? (isCurrentRoundHaveBet || isCurrentRoundHaveAllIn) && isCurrentRoundHaveRaise ? false : true : false;
 
-    const isCanReRaise = (isCurrentRoundHaveBet || isCurrentRoundHaveAllIn) && isCurrentRoundHaveRaise && turnPlayer.amount > raiseMinAmount ? true : false;
+    const isCanRaise = raiseMinAmount > +turnPlayer.amount ? false : isCurrentRoundHaveBetOrAllIn ? (isCurrentRoundHaveBet || isCurrentRoundHaveAllIn) && isCurrentRoundHaveRaise ? false : true : false;
+    const isCanReRaise = raiseMinAmount > +turnPlayer.amount ? false : (isCurrentRoundHaveBet || isCurrentRoundHaveAllIn) && isCurrentRoundHaveRaise && turnPlayer.amount > raiseMinAmount ? true : false;
 
-  
-    let betMinAmount = +gameBlind.big_blind_amount;
+    let betMinAmount = +turnPlayer.amount > +gameBlind.big_blind_amount ? +gameBlind.big_blind_amount : +turnPlayer.amount;
 
     const actions: ActionsOpportunities = {
       isCanFold, // եթե կա bet կամ all-in ապա true, հակառակ դեպքում false,
@@ -385,15 +401,15 @@ export default class GameService implements IGameService {
   ) {
     console.log("************** START RAISE **************");
 
-    const minRaiseAmount =
-      +hand.current_max_bet +
-      (+hand.current_max_bet > 0
-        ? +hand.last_raise_amount
-        : +hand.big_blind_amount);
+    // const minRaiseAmount =
+    //   +hand.current_max_bet +
+    //   (+hand.current_max_bet > 0
+    //     ? +hand.last_raise_amount
+    //     : +hand.big_blind_amount);
 
-    if (betAmount < minRaiseAmount) {
-      throw new Error(`Ռեյզի նվազագույն չափը պետք է լինի ${minRaiseAmount}`);
-    }
+    // if (betAmount < minRaiseAmount) {
+    //   throw new Error(`Ռեյզի նվազագույն չափը պետք է լինի ${minRaiseAmount}`);
+    // }
 
     const player = await this.repository.getPlayerById(playerId);
     if (player && betAmount) {
@@ -1379,7 +1395,12 @@ export default class GameService implements IGameService {
 
     for (const player of players) {
       if (player.id === hand.big_blind) {
-        await this.repository.updatePlayer(player.id, { amount: player.amount - gameBlind.ante });
+        await this.repository.updatePlayer(
+          player.id, 
+          { 
+            amount: +player.amount > +gameBlind.ante ? +player.amount - +gameBlind.ante : +player.amount
+          }
+        );
       }
     }
 
@@ -1390,21 +1411,41 @@ export default class GameService implements IGameService {
     });
 
     if (hand.small_blind) {
+      const SB = players.find(player => player.id === hand.small_blind);
+      if(!SB) {
+        throw new Error("Not find small blind.");
+      }
+
+      const SBAction = +SB.amount > +gameBlind.small_blind_amount ? PlayerAction.Bet : PlayerAction.AllIn;
+      const SBAmount = +SB.amount > +gameBlind.small_blind_amount ? +gameBlind.small_blind_amount : +SB.amount;
+
       await this.performAction(
         gameId,
         hand.id,
         hand.small_blind,
-        PlayerAction.Bet,
-        gameBlind.small_blind_amount
+        SBAction,
+        SBAmount,
       );
     }
 
+    const BB = players.find(player => player.id === hand.big_blind);
+    if(!BB) {
+      throw new Error("Not find big blind.");
+    }
+
+    const BBAction = +BB.amount - +gameBlind.ante > +gameBlind.big_blind_amount ? PlayerAction.Raise : PlayerAction.AllIn;
+    const BBAmount = +BB.amount - +gameBlind.ante > +gameBlind.big_blind_amount ? +gameBlind.big_blind_amount : +BB.amount - +gameBlind.ante > 0 ? +BB.amount - +gameBlind.ante : 0;
+    
+    this.repository.updatePlayer(hand.big_blind, {
+      amount: +BB.amount - +gameBlind.ante > 0 ? +BB.amount - +gameBlind.ante : 0
+    });
+    
     await this.performAction(
       gameId,
       hand.id,
       hand.big_blind,
-      PlayerAction.Raise,
-      gameBlind.big_blind_amount
+      BBAction,
+      BBAmount,
     );
 
     const [updatedPlayers, playerActions, updatedHand] =
@@ -1471,6 +1512,8 @@ export default class GameService implements IGameService {
       );
     }
 
+    let ante = +gameBlind.ante;
+
     let smallBlindId = null;
     for (let i = 1; i <= players.length; i++) {
       const index = (players.findIndex((p) => p.id === nextDealerId) + i) % players.length;
@@ -1493,6 +1536,9 @@ export default class GameService implements IGameService {
       }
       if (players[index].is_active) {
         bigBlindId = players[index].id;
+        if (+players[index].amount < ante) {
+          ante = +players[index].amount
+        }
         break;
       }
     }
@@ -1519,7 +1565,7 @@ export default class GameService implements IGameService {
       smallBlindId,
       bigBlindId,
       0,
-      +gameBlind.ante,
+      ante,
       smallBlindAmount,
       bigBlindAmount,
       0,
